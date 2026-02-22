@@ -10,8 +10,32 @@ use iced::window;
 /// Dock panel height in logical pixels.
 const DOCK_HEIGHT: f32 = 48.0;
 
-/// Default dock width — set large; sway constrains to actual screen width.
-const DOCK_WIDTH: f32 = 3840.0;
+/// Query sway for the focused output dimensions.
+/// Returns (x, y, width, height) of the focused output, or defaults for 1920x1080 at (0,0).
+fn get_focused_output() -> (f32, f32, f32, f32) {
+    let output = std::process::Command::new("swaymsg")
+        .args(["-t", "get_outputs", "-r"])
+        .output()
+        .ok();
+
+    if let Some(out) = output {
+        if let Ok(outputs) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout) {
+            if let Some(focused) = outputs.iter().find(|o| {
+                o.get("focused").and_then(|v| v.as_bool()).unwrap_or(false)
+            }) {
+                if let Some(rect) = focused.get("rect") {
+                    let x = rect.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    let y = rect.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    let w = rect.get("width").and_then(|v| v.as_f64()).unwrap_or(1920.0) as f32;
+                    let h = rect.get("height").and_then(|v| v.as_f64()).unwrap_or(1080.0) as f32;
+                    return (x, y, w, h);
+                }
+            }
+        }
+    }
+
+    (0.0, 0.0, 1920.0, 1080.0)
+}
 
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
@@ -23,16 +47,20 @@ fn main() -> iced::Result {
 
     tracing::info!("aios-dock starting...");
 
-    // TODO: On Linux/Wayland, replace with iced_layershell for proper
-    // layer-shell anchoring (Bottom + Left + Right, exclusive zone 48).
-    // iced_layershell does not compile on macOS, so we use a regular
-    // iced window positioned at the bottom of the screen.
+    let (out_x, out_y, out_w, out_h) = get_focused_output();
+    let dock_width = out_w;
+    let dock_x = out_x;
+    let dock_y = out_y + out_h - DOCK_HEIGHT;
+
+    tracing::info!(
+        "Dock: output at ({out_x},{out_y}) size {out_w}x{out_h}, placing dock at ({dock_x},{dock_y}) width {dock_width}"
+    );
 
     iced::application(DockApp::new, DockApp::update, DockApp::view)
         .title("AIOS Dock")
         .theme(iced::Theme::TokyoNight)
-        .window_size((DOCK_WIDTH, DOCK_HEIGHT))
-        .position(window::Position::SpecificWith(position_at_bottom))
+        .window_size((dock_width, DOCK_HEIGHT))
+        .position(window::Position::Specific(iced::Point::new(dock_x, dock_y)))
         .level(window::Level::AlwaysOnTop)
         .decorations(false)
         .resizable(false)
@@ -42,13 +70,4 @@ fn main() -> iced::Result {
             iced::time::every(std::time::Duration::from_secs(5)).map(|_| app::Message::Tick)
         })
         .run()
-}
-
-/// Compute the initial window position so the dock sits at the bottom-center
-/// of the primary monitor.
-///
-/// `window_size` is the dock dimensions, `monitor_size` is the screen resolution.
-fn position_at_bottom(_window_size: iced::Size, monitor_size: iced::Size) -> iced::Point {
-    let y = monitor_size.height - DOCK_HEIGHT;
-    iced::Point::new(0.0, y)
 }
