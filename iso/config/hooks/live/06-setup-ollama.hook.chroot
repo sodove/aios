@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+# Download and install Ollama CLI binary into the ISO.
+# The service will be started on-demand by the OOBE wizard or Settings app.
+
+echo "=== Installing Ollama CLI ==="
+
+# Download the official install script and run it
+# This installs the ollama binary to /usr/local/bin/ollama
+# and creates a systemd service unit.
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Disable the service by default — user starts it via OOBE or Settings.
+systemctl disable ollama.service 2>/dev/null || true
+
+echo "=== Ollama installed ==="
+ollama --version || echo "WARNING: ollama binary not found after install"

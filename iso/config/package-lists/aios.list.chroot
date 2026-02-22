@@ -35,6 +35,7 @@ sudo
 bash-completion
 curl
 ca-certificates
+zstd
 
 # Firmware (non-free for modern GPU, Wi-Fi, Ethernet hardware)
 firmware-linux-free

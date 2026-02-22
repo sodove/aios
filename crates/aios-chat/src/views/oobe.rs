@@ -243,49 +243,78 @@ fn ollama_setup_view(state: &OobeState) -> Element<'_, Message> {
         .into()
 }
 
-/// Ollama model selection step -- shows model buttons and pull status.
+/// Ollama model selection step -- shows fetched models and custom input.
 fn ollama_model_select_view(state: &OobeState) -> Element<'_, Message> {
-    let heading = text("Select a Model")
+    let heading = text("Выбери модель")
         .size(22)
         .color(AiosColors::ACCENT);
 
-    let models = ["llama3", "mistral", "phi3", "gemma2"];
+    let mut content = column![heading, Space::new().height(24)]
+        .align_x(Alignment::Center)
+        .max_width(420)
+        .spacing(8);
 
-    let model_buttons: Vec<Element<'_, Message>> = models
-        .iter()
-        .map(|&model| {
-            let label = text(model.to_owned())
+    if let Some(status_msg) = &state.ollama_status {
+        let status = text(status_msg.clone())
+            .size(13)
+            .color(AiosColors::TEXT_SECONDARY);
+        content = content.push(status);
+        content = content.push(Space::new().height(8));
+    }
+
+    // Show fetched models as cards
+    if !state.available_models.is_empty() {
+        let subtitle = text("Популярные модели:")
+            .size(14)
+            .color(AiosColors::TEXT_SECONDARY);
+        content = content.push(subtitle);
+
+        for model in &state.available_models {
+            let label = text(model.clone())
                 .size(15)
                 .color(AiosColors::TEXT_PRIMARY);
             let inner = container(label)
                 .width(Length::Fill)
                 .padding(14)
                 .style(theme::container_oobe_card);
-            button(inner)
-                .on_press(Message::OobeOllamaSelectModel(model.to_owned()))
+            let btn = button(inner)
+                .on_press(Message::OobeOllamaSelectModel(model.clone()))
                 .width(Length::Fill)
-                .style(theme::oobe_card_button)
-                .into()
+                .style(theme::oobe_card_button);
+            content = content.push(btn);
+        }
+
+        content = content.push(Space::new().height(12));
+    }
+
+    // Custom model input
+    let custom_label = text("Или введи имя модели:")
+        .size(14)
+        .color(AiosColors::TEXT_SECONDARY);
+
+    let custom_input = text_input("например: codellama:7b", &state.custom_model_input)
+        .on_input(Message::OobeOllamaCustomModelChanged)
+        .padding(10)
+        .size(14)
+        .style(theme::input_style);
+
+    let can_pull_custom = !state.custom_model_input.trim().is_empty();
+    let pull_btn = button(text("Pull").size(14))
+        .on_press_maybe(if can_pull_custom {
+            Some(Message::OobeOllamaSelectModel(state.custom_model_input.trim().to_owned()))
+        } else {
+            None
         })
-        .collect();
+        .padding([8, 20])
+        .style(theme::send_button);
 
-    let mut content = column![heading, Space::new().height(24)]
-        .align_x(Alignment::Center)
-        .max_width(420)
-        .spacing(10);
+    let custom_row = row![custom_input, Space::new().width(8), pull_btn]
+        .align_y(Alignment::Center);
 
-    for btn in model_buttons {
-        content = content.push(btn);
-    }
+    content = content.push(custom_label);
+    content = content.push(custom_row);
 
-    if let Some(status_msg) = &state.ollama_status {
-        let status = text(status_msg.clone())
-            .size(13)
-            .color(AiosColors::TEXT_SECONDARY);
-        content = content.push(Space::new().height(16));
-        content = content.push(status);
-    }
-
+    // Back button
     let back_btn = button(text("Назад").size(14))
         .on_press(Message::OobeBack)
         .padding([8, 20])

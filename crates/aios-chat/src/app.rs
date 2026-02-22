@@ -43,6 +43,10 @@ pub struct OobeState {
     pub ollama_model: Option<String>,
     /// Status message during Ollama setup.
     pub ollama_status: Option<String>,
+    /// Available models fetched from Ollama library.
+    pub available_models: Vec<String>,
+    /// Custom model name typed by user.
+    pub custom_model_input: String,
 }
 
 /// Steps in the OOBE setup wizard.
@@ -96,6 +100,10 @@ pub enum Message {
     OobeSubmitApiKey,
     /// Ollama installation check completed.
     OobeOllamaChecked { installed: bool },
+    /// Available models list fetched from Ollama library.
+    OobeOllamaModelsLoaded(Vec<String>),
+    /// User typed into custom model input.
+    OobeOllamaCustomModelChanged(String),
     /// User selected an Ollama model to pull.
     OobeOllamaSelectModel(String),
     /// Ollama model pull completed.
@@ -128,6 +136,8 @@ impl AiosChat {
                 api_key_input: String::new(),
                 ollama_model: None,
                 ollama_status: None,
+                available_models: Vec::new(),
+                custom_model_input: String::new(),
             })
         };
 
@@ -186,32 +196,23 @@ impl AiosChat {
                     oobe.selected_provider = Some(provider);
                     if provider == ProviderType::Ollama {
                         oobe.step = OobeStep::OllamaSetup;
-                        oobe.ollama_status = Some("Checking Ollama installation...".to_owned());
+                        oobe.ollama_status = Some("Starting Ollama service...".to_owned());
                         return Task::perform(
                             async {
+                                // Ollama is pre-installed in the ISO. Just check it exists and start the service.
                                 let installed = std::process::Command::new("ollama")
                                     .arg("--version")
                                     .output()
                                     .map(|o| o.status.success())
                                     .unwrap_or(false);
-                                if !installed {
-                                    let _ = std::process::Command::new("sh")
-                                        .args(["-c", "curl -fsSL https://ollama.com/install.sh | sh"])
-                                        .output();
+                                if installed {
                                     let _ = std::process::Command::new("systemctl")
                                         .args(["start", "ollama"])
                                         .output();
-                                    std::process::Command::new("ollama")
-                                        .arg("--version")
-                                        .output()
-                                        .map(|o| o.status.success())
-                                        .unwrap_or(false)
-                                } else {
-                                    let _ = std::process::Command::new("systemctl")
-                                        .args(["start", "ollama"])
-                                        .output();
-                                    true
+                                    // Give service a moment to start
+                                    std::thread::sleep(std::time::Duration::from_secs(2));
                                 }
+                                installed
                             },
                             |installed| Message::OobeOllamaChecked { installed },
                         );
@@ -231,11 +232,29 @@ impl AiosChat {
                 if let Some(oobe) = &mut self.oobe_state {
                     if installed {
                         oobe.step = OobeStep::OllamaModelSelect;
-                        oobe.ollama_status = None;
+                        oobe.ollama_status = Some("Loading available models...".to_owned());
+                        // Fetch available models from Ollama library
+                        return Task::perform(
+                            async {
+                                fetch_ollama_models().await
+                            },
+                            Message::OobeOllamaModelsLoaded,
+                        );
                     } else {
-                        oobe.ollama_status = Some("Failed to install Ollama. You can install it later from Settings.".to_owned());
+                        oobe.ollama_status = Some("Ollama not found. You can install it from Settings.".to_owned());
                         oobe.step = OobeStep::OllamaModelSelect;
                     }
+                }
+            }
+            Message::OobeOllamaModelsLoaded(models) => {
+                if let Some(oobe) = &mut self.oobe_state {
+                    oobe.available_models = models;
+                    oobe.ollama_status = None;
+                }
+            }
+            Message::OobeOllamaCustomModelChanged(value) => {
+                if let Some(oobe) = &mut self.oobe_state {
+                    oobe.custom_model_input = value;
                 }
             }
             Message::OobeOllamaSelectModel(model) => {
@@ -609,4 +628,44 @@ async fn write_config(config: AiosConfig) -> Result<(), String> {
 
     tracing::info!("Config saved to {}", path.display());
     Ok(())
+}
+
+/// Fetch available models from the Ollama library API.
+/// Tries `https://ollama.com/api/tags` first, falls back to hardcoded popular models.
+async fn fetch_ollama_models() -> Vec<String> {
+    // Try fetching from Ollama library API
+    let result = tokio::task::spawn_blocking(|| {
+        std::process::Command::new("curl")
+            .args(["-sS", "--max-time", "10", "https://ollama.com/api/tags"])
+            .output()
+    })
+    .await;
+
+    if let Ok(Ok(output)) = result {
+        if output.status.success() {
+            if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                // Response format: { "models": [ { "name": "llama3", ... }, ... ] }
+                if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
+                    let names: Vec<String> = models
+                        .iter()
+                        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
+                        .take(20)
+                        .collect();
+                    if !names.is_empty() {
+                        return names;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: popular models
+    vec![
+        "llama3.3".to_owned(),
+        "gemma3".to_owned(),
+        "qwen3".to_owned(),
+        "mistral".to_owned(),
+        "phi4".to_owned(),
+        "deepseek-r1".to_owned(),
+    ]
 }
