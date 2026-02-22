@@ -12,6 +12,8 @@ pub fn view(state: &OobeState) -> Element<'_, Message> {
         OobeStep::Welcome => welcome_view(),
         OobeStep::SelectProvider => select_provider_view(),
         OobeStep::EnterApiKey => enter_api_key_view(state),
+        OobeStep::OllamaSetup => ollama_setup_view(state),
+        OobeStep::OllamaModelSelect => ollama_model_select_view(state),
         OobeStep::Complete => complete_view(state),
     };
 
@@ -211,6 +213,94 @@ fn enter_api_key_view(state: &OobeState) -> Element<'_, Message> {
         .into()
 }
 
+/// Ollama setup step -- shows installation check status.
+fn ollama_setup_view(state: &OobeState) -> Element<'_, Message> {
+    let heading = text("Ollama Setup")
+        .size(22)
+        .color(AiosColors::ACCENT);
+
+    let status_msg = state
+        .ollama_status
+        .as_deref()
+        .unwrap_or("Checking Ollama installation...");
+
+    let status = text(status_msg.to_owned())
+        .size(14)
+        .color(AiosColors::TEXT_SECONDARY);
+
+    let content = column![
+        heading,
+        Space::new().height(24),
+        status,
+    ]
+    .align_x(Alignment::Center)
+    .max_width(420);
+
+    container(content)
+        .padding(40)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
+}
+
+/// Ollama model selection step -- shows model buttons and pull status.
+fn ollama_model_select_view(state: &OobeState) -> Element<'_, Message> {
+    let heading = text("Select a Model")
+        .size(22)
+        .color(AiosColors::ACCENT);
+
+    let models = ["llama3", "mistral", "phi3", "gemma2"];
+
+    let model_buttons: Vec<Element<'_, Message>> = models
+        .iter()
+        .map(|&model| {
+            let label = text(model.to_owned())
+                .size(15)
+                .color(AiosColors::TEXT_PRIMARY);
+            let inner = container(label)
+                .width(Length::Fill)
+                .padding(14)
+                .style(theme::container_oobe_card);
+            button(inner)
+                .on_press(Message::OobeOllamaSelectModel(model.to_owned()))
+                .width(Length::Fill)
+                .style(theme::oobe_card_button)
+                .into()
+        })
+        .collect();
+
+    let mut content = column![heading, Space::new().height(24)]
+        .align_x(Alignment::Center)
+        .max_width(420)
+        .spacing(10);
+
+    for btn in model_buttons {
+        content = content.push(btn);
+    }
+
+    if let Some(status_msg) = &state.ollama_status {
+        let status = text(status_msg.clone())
+            .size(13)
+            .color(AiosColors::TEXT_SECONDARY);
+        content = content.push(Space::new().height(16));
+        content = content.push(status);
+    }
+
+    let back_btn = button(text("Назад").size(14))
+        .on_press(Message::OobeBack)
+        .padding([8, 20])
+        .style(theme::oobe_secondary_button);
+
+    content = content.push(Space::new().height(16));
+    content = content.push(back_btn);
+
+    container(content)
+        .padding(40)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
+}
+
 /// Completion step -- shows the chosen provider and a start button.
 fn complete_view(state: &OobeState) -> Element<'static, Message> {
     let checkmark = text("Настройка завершена!")
@@ -224,11 +314,12 @@ fn complete_view(state: &OobeState) -> Element<'static, Message> {
         None => "по умолчанию",
     };
 
+    let ollama_model_name = state.ollama_model.clone().unwrap_or_else(|| "llama3".to_owned());
     let model_label = match state.selected_provider {
-        Some(ProviderType::Claude) => "claude-sonnet-4-20250514",
-        Some(ProviderType::OpenAi) => "gpt-4o",
-        Some(ProviderType::Ollama) => "llama3",
-        None => "claude-sonnet-4-20250514",
+        Some(ProviderType::Claude) => "claude-sonnet-4-20250514".to_owned(),
+        Some(ProviderType::OpenAi) => "gpt-4o".to_owned(),
+        Some(ProviderType::Ollama) => ollama_model_name,
+        None => "claude-sonnet-4-20250514".to_owned(),
     };
 
     let info = column![

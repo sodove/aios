@@ -39,6 +39,10 @@ pub struct OobeState {
     pub selected_provider: Option<ProviderType>,
     /// API key text input buffer.
     pub api_key_input: String,
+    /// Selected Ollama model name.
+    pub ollama_model: Option<String>,
+    /// Status message during Ollama setup.
+    pub ollama_status: Option<String>,
 }
 
 /// Steps in the OOBE setup wizard.
@@ -50,6 +54,10 @@ pub enum OobeStep {
     SelectProvider,
     /// API key entry (skipped for Ollama).
     EnterApiKey,
+    /// Ollama: checking if installed, installing if needed.
+    OllamaSetup,
+    /// Ollama: selecting which model to pull.
+    OllamaModelSelect,
     /// Setup complete -- summary before entering chat.
     Complete,
 }
@@ -86,6 +94,12 @@ pub enum Message {
     OobeApiKeyChanged(String),
     /// User submitted the API key.
     OobeSubmitApiKey,
+    /// Ollama installation check completed.
+    OobeOllamaChecked { installed: bool },
+    /// User selected an Ollama model to pull.
+    OobeOllamaSelectModel(String),
+    /// Ollama model pull completed.
+    OobeOllamaModelPulled(Result<(), String>),
     /// Navigate back to the previous OOBE step.
     OobeBack,
     /// User chose to skip the OOBE wizard entirely.
@@ -112,6 +126,8 @@ impl AiosChat {
                 step: OobeStep::Welcome,
                 selected_provider: None,
                 api_key_input: String::new(),
+                ollama_model: None,
+                ollama_status: None,
             })
         };
 
@@ -169,8 +185,36 @@ impl AiosChat {
                 if let Some(oobe) = &mut self.oobe_state {
                     oobe.selected_provider = Some(provider);
                     if provider == ProviderType::Ollama {
-                        // Ollama needs no API key -- save and go straight to Complete.
-                        return self.save_oobe_config();
+                        oobe.step = OobeStep::OllamaSetup;
+                        oobe.ollama_status = Some("Checking Ollama installation...".to_owned());
+                        return Task::perform(
+                            async {
+                                let installed = std::process::Command::new("ollama")
+                                    .arg("--version")
+                                    .output()
+                                    .map(|o| o.status.success())
+                                    .unwrap_or(false);
+                                if !installed {
+                                    let _ = std::process::Command::new("sh")
+                                        .args(["-c", "curl -fsSL https://ollama.com/install.sh | sh"])
+                                        .output();
+                                    let _ = std::process::Command::new("systemctl")
+                                        .args(["start", "ollama"])
+                                        .output();
+                                    std::process::Command::new("ollama")
+                                        .arg("--version")
+                                        .output()
+                                        .map(|o| o.status.success())
+                                        .unwrap_or(false)
+                                } else {
+                                    let _ = std::process::Command::new("systemctl")
+                                        .args(["start", "ollama"])
+                                        .output();
+                                    true
+                                }
+                            },
+                            |installed| Message::OobeOllamaChecked { installed },
+                        );
                     }
                     oobe.step = OobeStep::EnterApiKey;
                 }
@@ -183,11 +227,58 @@ impl AiosChat {
             Message::OobeSubmitApiKey => {
                 return self.save_oobe_config();
             }
+            Message::OobeOllamaChecked { installed } => {
+                if let Some(oobe) = &mut self.oobe_state {
+                    if installed {
+                        oobe.step = OobeStep::OllamaModelSelect;
+                        oobe.ollama_status = None;
+                    } else {
+                        oobe.ollama_status = Some("Failed to install Ollama. You can install it later from Settings.".to_owned());
+                        oobe.step = OobeStep::OllamaModelSelect;
+                    }
+                }
+            }
+            Message::OobeOllamaSelectModel(model) => {
+                if let Some(oobe) = &mut self.oobe_state {
+                    oobe.ollama_model = Some(model.clone());
+                    oobe.ollama_status = Some(format!("Pulling {model}... This may take a few minutes."));
+                    return Task::perform(
+                        async move {
+                            let output = std::process::Command::new("ollama")
+                                .args(["pull", &model])
+                                .output();
+                            match output {
+                                Ok(o) if o.status.success() => Ok(()),
+                                Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+                                Err(e) => Err(e.to_string()),
+                            }
+                        },
+                        Message::OobeOllamaModelPulled,
+                    );
+                }
+            }
+            Message::OobeOllamaModelPulled(result) => {
+                if let Some(oobe) = &mut self.oobe_state {
+                    match result {
+                        Ok(()) => {
+                            oobe.ollama_status = Some("Model ready!".to_owned());
+                        }
+                        Err(e) => {
+                            oobe.ollama_status = Some(format!("Pull failed: {e}. You can try again from Settings."));
+                        }
+                    }
+                    return self.save_oobe_config();
+                }
+            }
             Message::OobeBack => {
                 if let Some(oobe) = &mut self.oobe_state {
                     match oobe.step {
                         OobeStep::EnterApiKey => oobe.step = OobeStep::SelectProvider,
                         OobeStep::SelectProvider => oobe.step = OobeStep::Welcome,
+                        OobeStep::OllamaSetup | OobeStep::OllamaModelSelect => {
+                            oobe.step = OobeStep::SelectProvider;
+                            oobe.ollama_status = None;
+                        }
                         _ => {}
                     }
                 }
@@ -463,10 +554,10 @@ impl AiosChat {
         let (model, base_url) = match provider_type {
             ProviderType::Claude => ("claude-sonnet-4-20250514".to_owned(), None),
             ProviderType::OpenAi => ("gpt-4o".to_owned(), None),
-            ProviderType::Ollama => (
-                "llama3".to_owned(),
-                Some("http://localhost:11434".to_owned()),
-            ),
+            ProviderType::Ollama => {
+                let model = oobe.ollama_model.clone().unwrap_or_else(|| "llama3".to_owned());
+                (model, Some("http://localhost:11434".to_owned()))
+            }
         };
 
         let config = AiosConfig {
