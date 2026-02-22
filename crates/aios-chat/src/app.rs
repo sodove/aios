@@ -630,42 +630,50 @@ async fn write_config(config: AiosConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Fetch available models from the Ollama library API.
-/// Tries `https://ollama.com/api/tags` first, falls back to hardcoded popular models.
+/// Get available Ollama models: locally installed + curated offline recommendations.
 async fn fetch_ollama_models() -> Vec<String> {
-    // Try fetching from Ollama library API
-    let result = tokio::task::spawn_blocking(|| {
-        std::process::Command::new("curl")
-            .args(["-sS", "--max-time", "10", "https://ollama.com/api/tags"])
+    // Check locally installed models via `ollama list`
+    let local_result = tokio::task::spawn_blocking(|| {
+        std::process::Command::new("ollama")
+            .arg("list")
             .output()
+            .ok()
     })
     .await;
 
-    if let Ok(Ok(output)) = result {
+    let mut models = Vec::new();
+
+    if let Ok(Some(output)) = local_result {
         if output.status.success() {
-            if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                // Response format: { "models": [ { "name": "llama3", ... }, ... ] }
-                if let Some(models) = json.get("models").and_then(|m| m.as_array()) {
-                    let names: Vec<String> = models
-                        .iter()
-                        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
-                        .take(20)
-                        .collect();
-                    if !names.is_empty() {
-                        return names;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().skip(1) {
+                // Each line: "NAME  ID  SIZE  MODIFIED"
+                if let Some(name) = line.split_whitespace().next() {
+                    if !name.is_empty() {
+                        models.push(name.to_owned());
                     }
                 }
             }
         }
     }
 
-    // Fallback: popular models
-    vec![
-        "llama3.3".to_owned(),
-        "gemma3".to_owned(),
-        "qwen3".to_owned(),
-        "mistral".to_owned(),
-        "phi4".to_owned(),
-        "deepseek-r1".to_owned(),
-    ]
+    // Curated list of popular offline Ollama models (all run locally, no API key needed)
+    let recommended = [
+        "llama3.2:3b",
+        "llama3.1:8b",
+        "mistral:7b",
+        "qwen2.5:7b",
+        "gemma2:9b",
+        "phi4-mini",
+        "deepseek-r1:8b",
+        "codellama:7b",
+    ];
+
+    for rec in recommended {
+        if !models.iter().any(|m| m == rec) {
+            models.push(rec.to_owned());
+        }
+    }
+
+    models
 }

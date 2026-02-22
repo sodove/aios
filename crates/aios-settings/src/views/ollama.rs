@@ -66,7 +66,7 @@ pub fn view(state: &OllamaState) -> Element<'_, Message> {
         text("Pull Model").size(16).color(theme::SettingsColors::TEXT_PRIMARY),
     );
 
-    let popular = ["llama3", "mistral", "phi3", "gemma2"];
+    let popular = ["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2", "phi4-mini", "deepseek-r1", "codellama"];
     let mut pull_row = row![].spacing(6);
     for model in popular {
         let already_installed = state.models.iter().any(|m| m.starts_with(model));

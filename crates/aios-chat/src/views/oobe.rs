@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, text, text_input, Space};
+use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Length};
 
 use aios_common::ProviderType;
@@ -322,11 +322,11 @@ fn ollama_model_select_view(state: &OobeState) -> Element<'_, Message> {
 
     content = content.push(Space::new().height(16));
     content = content.push(back_btn);
+    content = content.push(Space::new().height(16));
 
-    container(content)
+    container(scrollable(content).height(Length::Fill))
         .padding(40)
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
         .into()
 }
 

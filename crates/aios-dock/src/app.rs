@@ -21,6 +21,8 @@ pub enum Message {
     Tick,
     /// User clicked an app icon to launch it.
     LaunchApp(AppId),
+    /// One-shot: position the dock at the bottom of the focused output via swaymsg.
+    PositionDock,
 }
 
 /// Root application state for the dock panel.
@@ -44,6 +46,15 @@ impl DockApp {
             battery_percent: None,
             volume_percent: 50,
         };
+
+        // On Wayland, clients cannot set their own window position.
+        // We spawn a background thread that waits for sway to create
+        // the window, then uses swaymsg IPC to move it to the bottom.
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            position_dock_via_sway();
+        });
+
         (state, Task::none())
     }
 
@@ -61,6 +72,9 @@ impl DockApp {
                 AppId::Terminal => launcher::launch_terminal(),
                 AppId::Settings => launcher::launch_settings(),
             },
+            Message::PositionDock => {
+                position_dock_via_sway();
+            }
         }
         Task::none()
     }
@@ -74,4 +88,55 @@ impl DockApp {
 /// Returns the current local time formatted as `HH:MM`.
 fn current_time() -> String {
     chrono::Local::now().format("%H:%M").to_string()
+}
+
+/// Use swaymsg IPC to position the dock at the bottom of the focused output.
+///
+/// Queries `swaymsg -t get_outputs` for the focused output dimensions,
+/// then moves and resizes the dock window accordingly.
+fn position_dock_via_sway() {
+    let output = std::process::Command::new("swaymsg")
+        .args(["-t", "get_outputs", "-r"])
+        .output()
+        .ok();
+
+    let (x, _y, w, h) = if let Some(out) = output {
+        serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout)
+            .ok()
+            .and_then(|outputs| {
+                let focused = outputs.iter().find(|o| {
+                    o.get("focused").and_then(|v| v.as_bool()).unwrap_or(false)
+                })?;
+                let rect = focused.get("rect")?;
+                let x = rect.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let y = rect.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let w = rect.get("width").and_then(|v| v.as_f64()).unwrap_or(1920.0);
+                let h = rect.get("height").and_then(|v| v.as_f64()).unwrap_or(1080.0);
+                Some((x, y, w, h))
+            })
+            .unwrap_or((0.0, 0.0, 1920.0, 1080.0))
+    } else {
+        (0.0, 0.0, 1920.0, 1080.0)
+    };
+
+    let dock_x = x as i32;
+    let dock_y = (_y + h - 48.0) as i32;
+    let dock_w = w as i32;
+
+    tracing::info!(
+        "Positioning dock via swaymsg: ({dock_x}, {dock_y}) width {dock_w}"
+    );
+
+    // Resize first, then move to the computed position.
+    let _ = std::process::Command::new("swaymsg")
+        .arg(format!(
+            "[app_id=aios-dock] resize set width {dock_w} height 48"
+        ))
+        .output();
+
+    let _ = std::process::Command::new("swaymsg")
+        .arg(format!(
+            "[app_id=aios-dock] move absolute position {dock_x} {dock_y}"
+        ))
+        .output();
 }
