@@ -1,0 +1,19 @@
+[package]
+name = "aios-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aios-settings"
+path = "src/main.rs"
+
+[dependencies]
+aios-common = { path = "../aios-common" }
+iced.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

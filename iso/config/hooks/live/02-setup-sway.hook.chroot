@@ -39,6 +39,8 @@ bindsym $mod+b exec chromium --ozone-platform-hint=auto
 bindsym $mod+q kill
 # Super+T: open terminal
 bindsym $mod+t exec foot
+# Super+S: open settings
+bindsym $mod+s exec aios-settings
 # Alt+Tab: switch focus
 bindsym Mod1+Tab focus next
 
@@ -51,6 +53,7 @@ for_window [app_id="aios-dock"] {
     resize set width 100 ppt height 48 px
 }
 for_window [app_id="aios-confirm"] floating enable
+for_window [app_id="aios-settings"] floating enable
 # Terminal: floating, reasonable default size
 for_window [app_id="foot"] floating enable, resize set 800 500
 

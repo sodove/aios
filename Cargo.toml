@@ -9,6 +9,7 @@ members = [
     "crates/aios-mcp",
     "crates/aios-memory",
     "crates/aios-voice",
+    "crates/aios-settings",
 ]
 
 [workspace.package]

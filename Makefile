@@ -2,7 +2,7 @@
 
 # The four Rust binaries shipped inside the AIOS ISO.
 # aios-memory and aios-voice are excluded from the ISO build.
-AIOS_BINS := aios-agent aios-chat aios-dock aios-confirm
+AIOS_BINS := aios-agent aios-chat aios-dock aios-confirm aios-settings
 BIN_DIR   := iso/config/includes.chroot/usr/local/bin
 
 # -----------------------------------------------------------------------
