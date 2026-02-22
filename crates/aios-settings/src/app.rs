@@ -219,8 +219,8 @@ impl SettingsApp {
 
             // -- Ollama --
             Message::OllamaRefresh => {
-                return Task::perform(async { do_ollama_refresh() }, |(running, models)| {
-                    Message::OllamaRefreshDone { running, models }
+                return Task::perform(async { do_ollama_refresh() }, |(running, models, available)| {
+                    Message::OllamaRefreshDone { running, models, available }
                 });
             }
             Message::OllamaRefreshDone { running, models, available } => {
@@ -273,8 +273,8 @@ impl SettingsApp {
             Message::OllamaActionDone(success, msg) => {
                 if success {
                     self.ollama.error = None;
-                    return Task::perform(async { do_ollama_refresh() }, |(running, models)| {
-                        Message::OllamaRefreshDone { running, models }
+                    return Task::perform(async { do_ollama_refresh() }, |(running, models, available)| {
+                        Message::OllamaRefreshDone { running, models, available }
                     });
                 } else {
                     self.ollama.error = Some(msg);
