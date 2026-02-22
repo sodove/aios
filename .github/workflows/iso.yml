@@ -1,0 +1,32 @@
+name: Build ISO
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-iso:
+    name: Build AIOS ISO
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ISO builder image
+        run: docker build -t aios-iso-builder iso/
+
+      - name: Build ISO
+        run: |
+          mkdir -p output
+          docker run --rm --privileged \
+            -v ${{ github.workspace }}/output:/output \
+            aios-iso-builder
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-iso
+          path: output/*.iso
+          retention-days: 7
+          if-no-files-found: warn

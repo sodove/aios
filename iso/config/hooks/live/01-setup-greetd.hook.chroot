@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+# Enable greetd
+if command -v greetd > /dev/null 2>&1; then
+    # Configure greetd for auto-login (MVP)
+    mkdir -p /etc/greetd
+    cat > /etc/greetd/config.toml << 'EOF'
+[terminal]
+vt = 7
+
+[default_session]
+command = "sway"
+user = "aios"
+EOF
+
+    # Enable greetd service
+    systemctl enable greetd.service 2>/dev/null || true
+    # Disable getty on tty7
+    systemctl disable getty@tty7.service 2>/dev/null || true
+fi

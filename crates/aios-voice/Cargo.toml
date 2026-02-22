@@ -1,0 +1,11 @@
+[package]
+name = "aios-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aios-common = { path = "../aios-common" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

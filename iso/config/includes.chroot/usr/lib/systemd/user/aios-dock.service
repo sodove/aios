@@ -1,0 +1,14 @@
+[Unit]
+Description=AIOS Dock / Task Bar
+After=aios-agent.service
+Requires=aios-agent.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/aios-dock
+Restart=on-failure
+RestartSec=2
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target

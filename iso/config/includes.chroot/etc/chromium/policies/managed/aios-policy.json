@@ -1,0 +1,13 @@
+{
+    "HomepageLocation": "about:blank",
+    "RestoreOnStartup": 1,
+    "BookmarkBarEnabled": false,
+    "PasswordManagerEnabled": false,
+    "AutofillAddressEnabled": false,
+    "AutofillCreditCardEnabled": false,
+    "DefaultBrowserSettingEnabled": false,
+    "MetricsReportingEnabled": false,
+    "SearchSuggestEnabled": true,
+    "TranslateEnabled": true,
+    "SpellcheckEnabled": true
+}

@@ -1,0 +1,62 @@
+#!/bin/sh
+set -e
+
+# Create default sway config for aios user
+mkdir -p /etc/skel/.config/sway
+
+# Sway config (replaces labwc rc.xml — sway uses a plain-text config)
+cat > /etc/skel/.config/sway/config << 'EOF'
+# AIOS Sway Configuration
+
+# Use Super as modifier
+set $mod Mod4
+
+# Environment
+exec_always export XDG_SESSION_TYPE=wayland
+exec_always export XDG_CURRENT_DESKTOP=sway
+exec_always export MOZ_ENABLE_WAYLAND=1
+exec_always export QT_QPA_PLATFORM=wayland
+exec_always export XCURSOR_SIZE=24
+
+# Appearance
+default_border pixel 2
+gaps inner 0
+gaps outer 0
+font pango:Noto Sans 11
+
+# Dark background (Tokyo Night)
+output * bg #1a1b26 solid_color
+
+# Keybindings
+# Super+Enter: open chat
+bindsym $mod+Return exec aios-chat
+# Super+B: open browser
+bindsym $mod+b exec chromium --ozone-platform-hint=auto
+# Super+Q: close window
+bindsym $mod+q kill
+# Alt+Tab: switch focus
+bindsym Mod1+Tab focus next
+
+# Float AIOS windows by default (chat and dock)
+for_window [app_id="aios-chat"] floating enable
+for_window [app_id="aios-dock"] floating enable
+for_window [app_id="aios-confirm"] floating enable
+
+# Autostart AIOS services
+exec systemctl --user start aios.target
+
+# Fallback: direct launch if systemd fails
+exec sleep 2 && (pgrep aios-agent || /usr/local/bin/aios-agent &)
+exec sleep 2 && (pgrep aios-dock  || /usr/local/bin/aios-dock &)
+exec sleep 2 && (pgrep aios-chat  || /usr/local/bin/aios-chat &)
+
+# Note: chromium is launched via dock or keybind, not autostart
+
+# Allow mouse to move/resize floating windows
+floating_modifier $mod normal
+
+# Disable sway bar (aios-dock replaces it)
+bar {
+    mode invisible
+}
+EOF

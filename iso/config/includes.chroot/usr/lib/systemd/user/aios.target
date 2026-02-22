@@ -1,0 +1,6 @@
+[Unit]
+Description=AIOS Application Suite
+Wants=aios-agent.service aios-chat.service aios-dock.service aios-confirm.service
+
+[Install]
+WantedBy=default.target

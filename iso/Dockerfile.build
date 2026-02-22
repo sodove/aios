@@ -1,0 +1,38 @@
+# AIOS Rust Build Container
+# Builds all Rust binaries inside Debian Bookworm to match the target ISO environment.
+# Usage: built automatically via `make build-linux`
+
+FROM debian:bookworm
+
+# Install system dependencies required by Rust crates used in this workspace:
+#   - build-essential, pkg-config: base toolchain
+#   - libssl-dev, ca-certificates: OpenSSL for reqwest (async-openai in aios-agent)
+#   - libwayland-dev, libxkbcommon-dev: Wayland backend for Iced (aios-chat, aios-dock, aios-confirm)
+#   - libvulkan-dev: GPU/Vulkan renderer for wgpu (Iced backend)
+#   - libx11-dev, libxcb1-dev, libxcb-render0-dev, libxcb-shape0-dev, libxcb-xfixes0-dev:
+#       X11/XCB fallback renderer for Iced on systems without Wayland compositor
+#   - libfontconfig1-dev: font rendering used by Iced text layout
+#   - curl: required to download rustup installer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    libwayland-dev \
+    libxkbcommon-dev \
+    libvulkan-dev \
+    libx11-dev \
+    libxcb1-dev \
+    libxcb-render0-dev \
+    libxcb-shape0-dev \
+    libxcb-xfixes0-dev \
+    libfontconfig1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install stable Rust toolchain via rustup (non-interactive, no shell modification)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /src

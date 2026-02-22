@@ -1,0 +1,13 @@
+[Unit]
+Description=AIOS AI Agent Daemon
+Before=aios-chat.service aios-dock.service aios-confirm.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/aios-agent
+Restart=on-failure
+RestartSec=2
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=default.target

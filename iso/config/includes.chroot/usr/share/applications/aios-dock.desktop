@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AIOS Dock
+Comment=AIOS Task Bar
+Exec=/usr/local/bin/aios-dock
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Utility;
+NoDisplay=true

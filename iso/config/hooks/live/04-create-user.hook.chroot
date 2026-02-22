@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+# Create aios user if not exists
+if ! id aios > /dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo,audio,video,netdev aios
+    echo "aios:aios" | chpasswd
+fi

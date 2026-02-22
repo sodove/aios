@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AIOS Chat
+Comment=AI Assistant Chat
+Exec=/usr/local/bin/aios-chat
+Icon=utilities-terminal
+Terminal=false
+Categories=Utility;Chat;

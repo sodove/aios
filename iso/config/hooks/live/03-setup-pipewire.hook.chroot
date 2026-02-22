@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+# Enable PipeWire for user session
+# PipeWire runs as user service, enabled via systemd user units
+# These should be auto-enabled on Bookworm but ensure:
+
+mkdir -p /etc/skel/.config/systemd/user/default.target.wants
+
+# Create symlinks for PipeWire user services
+for service in pipewire.service pipewire-pulse.service wireplumber.service; do
+    ln -sf "/usr/lib/systemd/user/$service" \
+        "/etc/skel/.config/systemd/user/default.target.wants/$service" 2>/dev/null || true
+done

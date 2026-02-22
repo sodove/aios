@@ -1,0 +1,39 @@
+# Window Manager (sway is available in bookworm; labwc is not)
+sway
+xwayland
+
+# Login
+greetd
+
+# Audio (pipewire + PulseAudio compat + session manager)
+pipewire
+wireplumber
+pipewire-pulse
+
+# Browser
+chromium
+
+# Networking
+network-manager
+wpasupplicant
+
+# D-Bus and system
+dbus-user-session
+policykit-1
+systemd-sysv
+
+# Fonts
+fonts-noto-core
+fonts-noto-mono
+
+# Utilities
+sudo
+bash-completion
+curl
+ca-certificates
+
+# Hardware support
+firmware-linux-free
+
+# Desktop background
+swaybg

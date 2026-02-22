@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+# Create directories for AIOS binaries
+mkdir -p /usr/local/bin
+
+# Runtime log directory
+mkdir -p /var/log/aios
+chmod 755 /var/log/aios
+
+# Default user config skeleton for AIOS
+mkdir -p /etc/skel/.config/aios

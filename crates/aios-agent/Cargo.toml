@@ -1,0 +1,27 @@
+[package]
+name = "aios-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aios-agent"
+path = "src/main.rs"
+
+[dependencies]
+aios-common = { path = "../aios-common" }
+aios-mcp = { path = "../aios-mcp" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+toml = "0.8"
+dirs = "6.0"
+async-openai = { version = "0.33", features = ["chat-completion"] }
+misanthropic = "0.5"
+async-trait.workspace = true
+futures.workspace = true
