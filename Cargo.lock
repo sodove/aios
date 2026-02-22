@@ -123,6 +123,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "iced",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

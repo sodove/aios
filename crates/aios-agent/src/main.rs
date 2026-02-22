@@ -31,9 +31,10 @@ async fn main() -> Result<()> {
     let audit_logger = AuditLogger::new(&config.agent.audit_log);
     let max_destructive = config.agent.max_destructive_per_minute;
 
-    // Create the LLM provider from config. If the API key is empty, fall back
-    // to echo mode and warn.
-    let state = if config.provider.api_key.is_empty() {
+    // Create the LLM provider from config. If the API key is empty (and provider
+    // is not Ollama, which doesn't need one), fall back to echo mode and warn.
+    let needs_api_key = config.provider.provider_type != aios_common::ProviderType::Ollama;
+    let state = if needs_api_key && config.provider.api_key.is_empty() {
         tracing::warn!(
             "No API key configured for {:?} provider -- running in echo mode",
             config.provider.provider_type,
