@@ -630,9 +630,16 @@ async fn write_config(config: AiosConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Get available Ollama models: locally installed + curated offline recommendations.
+/// Get available Ollama models: locally installed + offline models from Ollama API.
+///
+/// Strategy:
+/// 1. List locally installed models via `ollama list`
+/// 2. Fetch from `https://ollama.com/api/tags`, keep only offline models (size > 0)
+/// 3. Fallback to curated list if API is unreachable
 async fn fetch_ollama_models() -> Vec<String> {
-    // Check locally installed models via `ollama list`
+    let mut models = Vec::new();
+
+    // 1. Locally installed models
     let local_result = tokio::task::spawn_blocking(|| {
         std::process::Command::new("ollama")
             .arg("list")
@@ -641,13 +648,10 @@ async fn fetch_ollama_models() -> Vec<String> {
     })
     .await;
 
-    let mut models = Vec::new();
-
     if let Ok(Some(output)) = local_result {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines().skip(1) {
-                // Each line: "NAME  ID  SIZE  MODIFIED"
                 if let Some(name) = line.split_whitespace().next() {
                     if !name.is_empty() {
                         models.push(name.to_owned());
@@ -657,21 +661,62 @@ async fn fetch_ollama_models() -> Vec<String> {
         }
     }
 
-    // Curated list of popular offline Ollama models (all run locally, no API key needed)
-    let recommended = [
-        "llama3.2:3b",
-        "llama3.1:8b",
-        "mistral:7b",
-        "qwen2.5:7b",
-        "gemma2:9b",
-        "phi4-mini",
-        "deepseek-r1:8b",
-        "codellama:7b",
-    ];
+    // 2. Fetch from Ollama library API, filter offline-only (size > 0)
+    let api_result = tokio::task::spawn_blocking(|| {
+        std::process::Command::new("curl")
+            .args(["-sS", "--max-time", "10", "https://ollama.com/api/tags"])
+            .output()
+    })
+    .await;
 
-    for rec in recommended {
-        if !models.iter().any(|m| m == rec) {
-            models.push(rec.to_owned());
+    let mut got_api = false;
+    if let Ok(Ok(output)) = api_result {
+        if output.status.success() {
+            if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                if let Some(api_models) = json.get("models").and_then(|m| m.as_array()) {
+                    let names: Vec<String> = api_models
+                        .iter()
+                        .filter(|m| {
+                            // size == 0 means online-only model; skip those
+                            m.get("size")
+                                .and_then(|s| s.as_u64())
+                                .unwrap_or(0)
+                                > 0
+                        })
+                        .filter_map(|m| {
+                            m.get("name").and_then(|n| n.as_str()).map(String::from)
+                        })
+                        .take(20)
+                        .collect();
+                    if !names.is_empty() {
+                        got_api = true;
+                        for name in names {
+                            if !models.contains(&name) {
+                                models.push(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Fallback curated list if API was unreachable
+    if !got_api {
+        let recommended = [
+            "llama3.2:3b",
+            "llama3.1:8b",
+            "mistral:7b",
+            "qwen2.5:7b",
+            "gemma2:9b",
+            "phi4-mini",
+            "deepseek-r1:8b",
+            "codellama:7b",
+        ];
+        for rec in recommended {
+            if !models.iter().any(|m| m == rec) {
+                models.push(rec.to_owned());
+            }
         }
     }
 

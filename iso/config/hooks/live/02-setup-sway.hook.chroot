@@ -25,6 +25,7 @@ exec_always export XCURSOR_SIZE=24
 default_border pixel 2
 gaps inner 0
 gaps outer 0
+gaps bottom 48
 font pango:Noto Sans 11
 
 # Dark background (Tokyo Night)
@@ -44,13 +45,16 @@ bindsym $mod+s exec aios-settings
 # Alt+Tab: switch focus
 bindsym Mod1+Tab focus next
 
-# Float AIOS windows by default (chat and dock)
-for_window [app_id="aios-chat"] floating enable
-# Dock: full-width bar anchored at bottom (sizing handled by dock itself via swaymsg)
+# Chat: tiled (not floating) so it respects gaps and doesn't overlap the dock
+for_window [app_id="aios-chat"] border none
+
+# Dock: floating, anchored at bottom via swaymsg IPC (see aios-dock app.rs)
 for_window [app_id="aios-dock"] {
     floating enable
     sticky enable
 }
+
+# Utility windows: floating
 for_window [app_id="aios-confirm"] floating enable
 for_window [app_id="aios-settings"] floating enable
 # Terminal: floating, reasonable default size
