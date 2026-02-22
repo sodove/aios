@@ -42,7 +42,12 @@ bindsym Mod1+Tab focus next
 
 # Float AIOS windows by default (chat and dock)
 for_window [app_id="aios-chat"] floating enable
-for_window [app_id="aios-dock"] floating enable
+# Dock: full-width bar anchored at bottom
+for_window [app_id="aios-dock"] {
+    floating enable
+    sticky enable
+    resize set width 100 ppt height 48 px
+}
 for_window [app_id="aios-confirm"] floating enable
 
 # Autostart AIOS services

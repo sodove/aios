@@ -10,8 +10,8 @@ use iced::window;
 /// Dock panel height in logical pixels.
 const DOCK_HEIGHT: f32 = 48.0;
 
-/// Default dock width (will stretch to screen width on Wayland via layer-shell).
-const DOCK_WIDTH: f32 = 1024.0;
+/// Default dock width — set large; sway constrains to actual screen width.
+const DOCK_WIDTH: f32 = 3840.0;
 
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
@@ -48,8 +48,7 @@ fn main() -> iced::Result {
 /// of the primary monitor.
 ///
 /// `window_size` is the dock dimensions, `monitor_size` is the screen resolution.
-fn position_at_bottom(window_size: iced::Size, monitor_size: iced::Size) -> iced::Point {
-    let x = (monitor_size.width - window_size.width) / 2.0;
-    let y = monitor_size.height - window_size.height;
-    iced::Point::new(x, y)
+fn position_at_bottom(_window_size: iced::Size, monitor_size: iced::Size) -> iced::Point {
+    let y = monitor_size.height - DOCK_HEIGHT;
+    iced::Point::new(0.0, y)
 }
