@@ -19,6 +19,11 @@ pub fn view(state: &OllamaState) -> Element<'_, Message> {
         Space::new().width(8),
         text(status_text).size(12).color(status_color),
         Space::new().width(Length::Fill),
+        button(text("Refresh").size(13))
+            .on_press(Message::OllamaRefresh)
+            .padding([6, 14])
+            .style(theme::action_button),
+        Space::new().width(4),
         button(text(if state.running { "Stop" } else { "Start" }).size(13))
             .on_press(if state.running { Message::OllamaStop } else { Message::OllamaStart })
             .padding([6, 14])

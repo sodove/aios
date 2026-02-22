@@ -168,7 +168,7 @@ impl AiosConfirm {
             }
 
             Message::CloseWindow => {
-                return iced::window::close(iced::window::Id::MAIN);
+                return iced::exit();
             }
         }
 

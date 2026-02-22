@@ -60,10 +60,6 @@ pub fn display_set_mode(output_name: &str, width: u32, height: u32, hz: f32) -> 
     run_cmd("swaymsg", &["output", output_name, "mode", &mode])
 }
 
-pub fn display_set_scale(output_name: &str, scale: f32) -> CmdResult {
-    run_cmd("swaymsg", &["output", output_name, "scale", &scale.to_string()])
-}
-
 // -- Ollama commands --
 
 pub fn ollama_status() -> CmdResult {
