@@ -45,20 +45,22 @@ bindsym $mod+s exec aios-settings
 # Alt+Tab: switch focus
 bindsym Mod1+Tab focus next
 
-# Chat: tiled (not floating) so it respects gaps and doesn't overlap the dock
-for_window [app_id="aios-chat"] border none
+# All windows are tiled by default — sway is a tiling WM.
+# gaps bottom 48 reserves space for the dock across all tiled windows.
+# Users can float individual windows with $mod+Space.
 
-# Dock: floating, anchored at bottom via swaymsg IPC (see aios-dock app.rs)
+# Remove borders for AIOS apps (they have their own chrome)
+for_window [app_id="aios-chat"] border none
+for_window [app_id="aios-settings"] border none
+
+# Dock: floating panel anchored at bottom via swaymsg IPC (see aios-dock app.rs)
 for_window [app_id="aios-dock"] {
     floating enable
     sticky enable
 }
 
-# Utility windows: floating
+# Confirm dialog: small popup, should float
 for_window [app_id="aios-confirm"] floating enable
-for_window [app_id="aios-settings"] floating enable
-# Terminal: floating, reasonable default size
-for_window [app_id="foot"] floating enable, resize set 800 500
 
 # Autostart AIOS services
 exec systemctl --user start aios.target
