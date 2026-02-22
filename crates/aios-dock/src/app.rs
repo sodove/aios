@@ -10,6 +10,8 @@ use crate::views::dock_bar;
 pub enum AppId {
     Chat,
     Browser,
+    Terminal,
+    Settings,
 }
 
 /// All messages the dock UI can produce.
@@ -56,6 +58,8 @@ impl DockApp {
             Message::LaunchApp(app) => match app {
                 AppId::Chat => launcher::launch_chat(),
                 AppId::Browser => launcher::launch_browser(),
+                AppId::Terminal => launcher::launch_terminal(),
+                AppId::Settings => launcher::launch_settings(),
             },
         }
         Task::none()

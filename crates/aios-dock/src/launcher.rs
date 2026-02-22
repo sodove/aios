@@ -28,3 +28,17 @@ pub fn launch_browser() {
         tracing::error!("Failed to launch browser: {e}");
     }
 }
+
+/// Attempts to launch the `foot` terminal emulator.
+pub fn launch_terminal() {
+    if let Err(e) = Command::new("foot").spawn() {
+        tracing::error!("Failed to launch foot: {e}");
+    }
+}
+
+/// Attempts to launch the `aios-settings` binary.
+pub fn launch_settings() {
+    if let Err(e) = Command::new("aios-settings").spawn() {
+        tracing::error!("Failed to launch aios-settings: {e}");
+    }
+}

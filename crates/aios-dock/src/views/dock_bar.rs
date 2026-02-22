@@ -10,15 +10,17 @@ use crate::views::{app_icon, system_tray};
 /// Renders the full dock bar.
 ///
 /// ```text
-/// +------+------+------------------+---+---+---+-------+
-/// | Chat | Web  |    (spacer)      |WiFi|Vol|Bat| 15:30 |
-/// +------+------+------------------+---+---+---+-------+
+/// +------+------+------+------+------------+---+---+---+-------+
+/// | Chat | Web  | Term | Gear | (spacer)   |WiFi|Vol|Bat| 15:30 |
+/// +------+------+------+------+------------+---+---+---+-------+
 /// ```
 pub fn view(state: &DockApp) -> Element<'_, Message> {
     let chat_icon = app_icon::view("Chat", AppId::Chat);
     let web_icon = app_icon::view("Web", AppId::Browser);
+    let term_icon = app_icon::view("Term", AppId::Terminal);
+    let settings_icon = app_icon::view("Gear", AppId::Settings);
 
-    let app_icons = row![chat_icon, web_icon]
+    let app_icons = row![chat_icon, web_icon, term_icon, settings_icon]
         .spacing(6)
         .align_y(iced::Alignment::Center);
 
