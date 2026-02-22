@@ -37,6 +37,8 @@ bindsym $mod+Return exec aios-chat
 bindsym $mod+b exec chromium --ozone-platform-hint=auto
 # Super+Q: close window
 bindsym $mod+q kill
+# Super+T: open terminal
+bindsym $mod+t exec foot
 # Alt+Tab: switch focus
 bindsym Mod1+Tab focus next
 
@@ -49,6 +51,8 @@ for_window [app_id="aios-dock"] {
     resize set width 100 ppt height 48 px
 }
 for_window [app_id="aios-confirm"] floating enable
+# Terminal: floating, reasonable default size
+for_window [app_id="foot"] floating enable, resize set 800 500
 
 # Autostart AIOS services
 exec systemctl --user start aios.target

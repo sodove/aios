@@ -13,6 +13,9 @@ pipewire-pulse
 # Browser
 chromium
 
+# Terminal emulator
+foot
+
 # Networking
 network-manager
 wpasupplicant
