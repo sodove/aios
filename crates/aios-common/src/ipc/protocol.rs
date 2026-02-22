@@ -54,6 +54,15 @@ pub enum IpcPayload {
         success: bool,
     },
 
+    // -- Config management --
+    /// Request the agent to reload its configuration from disk.
+    ReloadConfig,
+    /// Response indicating whether config reload succeeded.
+    ConfigReloaded {
+        success: bool,
+        message: String,
+    },
+
     // -- System --
     SystemInfo {
         info: serde_json::Value,
@@ -73,6 +82,7 @@ pub enum ClientType {
     Chat,
     Dock,
     Confirm,
+    Settings,
 }
 
 /// Length-prefixed JSON codec for IPC messages.

@@ -108,6 +108,21 @@ pub async fn route_message(
             None
         }
 
+        IpcPayload::ReloadConfig => {
+            tracing::info!("Config reload requested via IPC");
+            let result = reload_config(state).await;
+            Some(IpcMessage {
+                id: Uuid::new_v4(),
+                payload: IpcPayload::ConfigReloaded {
+                    success: result.is_ok(),
+                    message: match &result {
+                        Ok(name) => format!("Config reloaded, provider: {name}"),
+                        Err(e) => format!("Reload failed: {e}"),
+                    },
+                },
+            })
+        }
+
         IpcPayload::Ping => Some(IpcMessage {
             id: Uuid::new_v4(),
             payload: IpcPayload::Pong,
@@ -307,6 +322,43 @@ async fn force_text_response(
             }
         }
     }
+}
+
+/// Re-read config from disk and swap the LLM provider in agent state.
+async fn reload_config(state: &Arc<RwLock<AgentState>>) -> anyhow::Result<String> {
+    let config = crate::config::load_config()?;
+
+    let needs_api_key = config.provider.provider_type != aios_common::ProviderType::Ollama;
+    let new_provider = if needs_api_key && config.provider.api_key.is_empty() {
+        tracing::warn!(
+            "No API key for {:?} after reload — switching to echo mode",
+            config.provider.provider_type,
+        );
+        None
+    } else {
+        match crate::llm::create_provider(&config.provider) {
+            Ok(p) => {
+                tracing::info!(provider = p.name(), "LLM provider recreated after config reload");
+                Some(p)
+            }
+            Err(e) => {
+                tracing::error!("Failed to create provider after reload: {e:#}");
+                return Err(e);
+            }
+        }
+    };
+
+    let provider_name = new_provider
+        .as_ref()
+        .map(|p| p.name().to_owned())
+        .unwrap_or_else(|| "echo".to_owned());
+
+    {
+        let mut state_guard = state.write().await;
+        state_guard.llm_provider = new_provider;
+    }
+
+    Ok(provider_name)
 }
 
 /// Produce a simple echo response (fallback when no LLM provider is configured).

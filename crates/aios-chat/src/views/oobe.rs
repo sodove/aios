@@ -263,7 +263,7 @@ fn ollama_model_select_view(state: &OobeState) -> Element<'_, Message> {
         if state.pulling {
             content = content.push(Space::new().height(4));
             content = content.push(
-                progress_bar(0.0..=100.0, state.pull_progress)
+                container(progress_bar(0.0..=100.0, state.pull_progress))
                     .height(6),
             );
         }

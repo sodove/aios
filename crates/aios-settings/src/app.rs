@@ -1,4 +1,6 @@
+use aios_common::{ClientType, IpcClient, IpcMessage, IpcPayload};
 use iced::{Element, Task};
+use uuid::Uuid;
 
 use crate::commands;
 use crate::theme;
@@ -79,6 +81,8 @@ pub struct AiState {
     pub base_url: String,
     pub saved: bool,
     pub error: Option<String>,
+    /// Locally installed Ollama models (for model picker).
+    pub installed_models: Vec<String>,
 }
 
 impl Default for AiState {
@@ -90,6 +94,7 @@ impl Default for AiState {
             base_url: String::new(),
             saved: false,
             error: None,
+            installed_models: Vec::new(),
         }
     }
 }
@@ -125,7 +130,6 @@ pub enum Message {
     OllamaActionDone(bool, String),
 
     // AI Provider
-    AiLoadConfig,
     AiConfigLoaded(String, String, String, String), // provider, api_key, model, base_url
     AiSelectProvider(String),
     AiApiKeyChanged(String),
@@ -133,6 +137,11 @@ pub enum Message {
     AiBaseUrlChanged(String),
     AiSave,
     AiSaveDone(bool, String),
+    AiReloadDone(bool, String),
+    /// Installed Ollama models loaded.
+    AiInstalledModels(Vec<String>),
+    /// User picked a model from installed list.
+    AiPickModel(String),
 }
 
 pub struct SettingsApp {
@@ -321,21 +330,30 @@ impl SettingsApp {
             }
 
             // -- AI Provider --
-            Message::AiLoadConfig => {
-                return Task::perform(async { load_ai_config() }, |(p, k, m, u)| {
-                    Message::AiConfigLoaded(p, k, m, u)
-                });
-            }
             Message::AiConfigLoaded(provider, api_key, model, base_url) => {
+                let is_ollama = provider == "ollama";
                 self.ai.provider = provider;
                 self.ai.api_key = api_key;
                 self.ai.model = model;
                 self.ai.base_url = base_url;
                 self.ai.saved = false;
+                if is_ollama {
+                    return Task::perform(
+                        async { fetch_installed_ollama_models() },
+                        Message::AiInstalledModels,
+                    );
+                }
             }
             Message::AiSelectProvider(p) => {
-                self.ai.provider = p;
+                self.ai.provider = p.clone();
                 self.ai.saved = false;
+                // Load installed models when switching to Ollama
+                if p == "ollama" {
+                    return Task::perform(
+                        async { fetch_installed_ollama_models() },
+                        Message::AiInstalledModels,
+                    );
+                }
             }
             Message::AiApiKeyChanged(v) => {
                 self.ai.api_key = v;
@@ -363,9 +381,29 @@ impl SettingsApp {
                 if success {
                     self.ai.saved = true;
                     self.ai.error = None;
+                    // Notify agent to hot-reload config via IPC
+                    return Task::perform(
+                        async { notify_agent_reload().await },
+                        |(ok, msg)| Message::AiReloadDone(ok, msg),
+                    );
                 } else {
                     self.ai.error = Some(msg);
                 }
+            }
+            Message::AiReloadDone(success, msg) => {
+                if success {
+                    tracing::info!("Agent config reloaded: {msg}");
+                } else {
+                    tracing::warn!("Agent reload failed: {msg}");
+                    // Not a fatal error — config is saved, agent will pick it up on next restart
+                }
+            }
+            Message::AiInstalledModels(models) => {
+                self.ai.installed_models = models;
+            }
+            Message::AiPickModel(model) => {
+                self.ai.model = model;
+                self.ai.saved = false;
             }
         }
         Task::none()
@@ -666,9 +704,82 @@ fn save_ai_config(provider: &str, api_key: &str, model: &str, base_url: &str) ->
 
     match toml::to_string_pretty(&config) {
         Ok(content) => match std::fs::write(&path, &content) {
-            Ok(()) => (true, "Saved! Restart aios-agent to apply.".to_owned()),
+            Ok(()) => (true, "Saved!".to_owned()),
             Err(e) => (false, format!("Write error: {e}")),
         },
         Err(e) => (false, format!("Serialize error: {e}")),
+    }
+}
+
+/// Fetch locally installed Ollama models via `ollama list`.
+fn fetch_installed_ollama_models() -> Vec<String> {
+    let output = std::process::Command::new("ollama")
+        .arg("list")
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout
+                .lines()
+                .skip(1) // skip header
+                .filter_map(|line| {
+                    let name = line.split_whitespace().next()?;
+                    if name.is_empty() { None } else { Some(name.to_owned()) }
+                })
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Connect to the agent via IPC and send a ReloadConfig command.
+async fn notify_agent_reload() -> (bool, String) {
+    let uid = std::env::var("UID")
+        .or_else(|_| std::env::var("EUID"))
+        .unwrap_or_else(|_| "1000".to_owned());
+    let socket_path = format!("/run/user/{uid}/aios-agent.sock");
+
+    let mut conn = match IpcClient::connect(&socket_path).await {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Cannot connect to agent: {e}")),
+    };
+
+    // Register as Settings client
+    let register = IpcMessage {
+        id: Uuid::new_v4(),
+        payload: IpcPayload::Register {
+            client_type: ClientType::Settings,
+        },
+    };
+    if let Err(e) = conn.send(&register).await {
+        return (false, format!("Failed to register: {e}"));
+    }
+
+    // Wait for RegisterAck
+    match conn.recv().await {
+        Ok(msg) => match msg.payload {
+            IpcPayload::RegisterAck { success: true } => {}
+            _ => return (false, "Unexpected registration response".to_owned()),
+        },
+        Err(e) => return (false, format!("Registration failed: {e}")),
+    }
+
+    // Send ReloadConfig
+    let reload = IpcMessage {
+        id: Uuid::new_v4(),
+        payload: IpcPayload::ReloadConfig,
+    };
+    if let Err(e) = conn.send(&reload).await {
+        return (false, format!("Failed to send reload: {e}"));
+    }
+
+    // Wait for ConfigReloaded response
+    match conn.recv().await {
+        Ok(msg) => match msg.payload {
+            IpcPayload::ConfigReloaded { success, message } => (success, message),
+            _ => (false, "Unexpected response".to_owned()),
+        },
+        Err(e) => (false, format!("Reload response failed: {e}")),
     }
 }

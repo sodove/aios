@@ -122,6 +122,8 @@ pub enum Message {
     OobeComplete,
     /// Config file was saved (or failed) asynchronously.
     OobeConfigSaved(Result<(), String>),
+    /// Agent config reload via IPC completed.
+    OobeAgentReloaded(bool, String),
 
     /// User clicked the close (X) button.
     CloseWindow,
@@ -342,15 +344,23 @@ impl AiosChat {
                         if let Some(oobe) = &mut self.oobe_state {
                             oobe.step = OobeStep::Complete;
                         }
-                        // Restart aios-agent so it picks up the new config
-                        let _ = std::process::Command::new("systemctl")
-                            .args(["--user", "restart", "aios-agent"])
-                            .spawn();
+                        // Hot-reload agent config via IPC instead of restarting
+                        return Task::perform(
+                            async { notify_agent_reload().await },
+                            |(ok, msg)| Message::OobeAgentReloaded(ok, msg),
+                        );
                     }
                     Err(reason) => {
                         tracing::error!("Failed to save config: {reason}");
                         // Stay on the current step; the user can retry.
                     }
+                }
+            }
+            Message::OobeAgentReloaded(success, msg) => {
+                if success {
+                    tracing::info!("Agent config reloaded after OOBE: {msg}");
+                } else {
+                    tracing::warn!("Agent reload after OOBE failed: {msg}");
                 }
             }
         }
@@ -761,5 +771,50 @@ async fn fetch_ollama_models() -> Vec<String> {
     }
 
     models
+}
+
+/// Connect to the agent via IPC and send a ReloadConfig command.
+async fn notify_agent_reload() -> (bool, String) {
+    use aios_common::{ClientType, IpcClient};
+
+    let socket = ipc_client::socket_path();
+
+    let mut conn = match IpcClient::connect(&socket).await {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Cannot connect to agent: {e}")),
+    };
+
+    // Register
+    let register = IpcMessage {
+        id: Uuid::new_v4(),
+        payload: IpcPayload::Register {
+            client_type: ClientType::Settings,
+        },
+    };
+    if let Err(e) = conn.send(&register).await {
+        return (false, format!("Failed to register: {e}"));
+    }
+    match conn.recv().await {
+        Ok(msg) if matches!(msg.payload, IpcPayload::RegisterAck { success: true }) => {}
+        Ok(_) => return (false, "Unexpected registration response".to_owned()),
+        Err(e) => return (false, format!("Registration failed: {e}")),
+    }
+
+    // Send ReloadConfig
+    let reload = IpcMessage {
+        id: Uuid::new_v4(),
+        payload: IpcPayload::ReloadConfig,
+    };
+    if let Err(e) = conn.send(&reload).await {
+        return (false, format!("Failed to send reload: {e}"));
+    }
+
+    match conn.recv().await {
+        Ok(msg) => match msg.payload {
+            IpcPayload::ConfigReloaded { success, message } => (success, message),
+            _ => (false, "Unexpected response".to_owned()),
+        },
+        Err(e) => (false, format!("Reload response failed: {e}")),
+    }
 }
 

@@ -55,6 +55,40 @@ pub fn view(state: &AiState) -> Element<'_, Message> {
         text("Model").size(14).color(theme::SettingsColors::TEXT_SECONDARY),
     );
 
+    // Show installed Ollama models as clickable cards
+    if state.provider == "ollama" && !state.installed_models.is_empty() {
+        let mut model_row = row![].spacing(6);
+        let mut count = 0;
+        let mut model_col = column![].spacing(6);
+
+        for model_name in &state.installed_models {
+            let is_selected = state.model == *model_name;
+            let style = if is_selected {
+                theme::sidebar_tab_active as fn(&iced::Theme, _) -> _
+            } else {
+                theme::action_button
+            };
+            let btn = button(text(model_name.clone()).size(12))
+                .padding([6, 12])
+                .style(style)
+                .on_press(Message::AiPickModel(model_name.clone()));
+            model_row = model_row.push(btn);
+            count += 1;
+            if count % 3 == 0 {
+                model_col = model_col.push(model_row);
+                model_row = row![].spacing(6);
+            }
+        }
+        if count % 3 != 0 {
+            model_col = model_col.push(model_row);
+        }
+        content = content.push(model_col);
+
+        content = content.push(
+            text("Или введи вручную:").size(12).color(theme::SettingsColors::TEXT_SECONDARY),
+        );
+    }
+
     let model_placeholder = match state.provider.as_str() {
         "ollama" => "llama3.2:3b",
         "open_ai" => "gpt-4o",
@@ -100,7 +134,7 @@ pub fn view(state: &AiState) -> Element<'_, Message> {
 
     if state.saved {
         save_row = save_row.push(
-            text("Saved! Restart aios-agent to apply.")
+            text("Saved & applied!")
                 .size(12)
                 .color(theme::SettingsColors::SUCCESS),
         );
