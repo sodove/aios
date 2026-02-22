@@ -9,6 +9,7 @@ pub fn view(active_tab: Tab) -> Element<'static, Message> {
         (Tab::Network, "Network"),
         (Tab::Display, "Display"),
         (Tab::Ollama, "Ollama"),
+        (Tab::Ai, "AI Provider"),
     ];
 
     let mut col = column![].spacing(4).padding(8);

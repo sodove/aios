@@ -2,7 +2,7 @@ use iced::{Element, Task};
 
 use crate::commands;
 use crate::theme;
-use crate::views::{display, network, ollama, sidebar};
+use crate::views::{ai, display, network, ollama, sidebar};
 
 /// Active settings tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub enum Tab {
     Network,
     Display,
     Ollama,
+    Ai,
 }
 
 /// Wi-Fi network entry parsed from nmcli output.
@@ -69,6 +70,30 @@ pub struct OllamaState {
     pub error: Option<String>,
 }
 
+/// State for AI Provider tab.
+#[derive(Debug, Clone)]
+pub struct AiState {
+    pub provider: String,   // "ollama", "openai", "claude"
+    pub api_key: String,
+    pub model: String,
+    pub base_url: String,
+    pub saved: bool,
+    pub error: Option<String>,
+}
+
+impl Default for AiState {
+    fn default() -> Self {
+        Self {
+            provider: "ollama".to_owned(),
+            api_key: String::new(),
+            model: String::new(),
+            base_url: String::new(),
+            saved: false,
+            error: None,
+        }
+    }
+}
+
 /// All messages the settings UI can produce.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -98,6 +123,16 @@ pub enum Message {
     OllamaPull(String),
     OllamaRemove(String),
     OllamaActionDone(bool, String),
+
+    // AI Provider
+    AiLoadConfig,
+    AiConfigLoaded(String, String, String, String), // provider, api_key, model, base_url
+    AiSelectProvider(String),
+    AiApiKeyChanged(String),
+    AiModelChanged(String),
+    AiBaseUrlChanged(String),
+    AiSave,
+    AiSaveDone(bool, String),
 }
 
 pub struct SettingsApp {
@@ -105,6 +140,7 @@ pub struct SettingsApp {
     pub network: NetworkState,
     pub display: DisplayState,
     pub ollama: OllamaState,
+    pub ai: AiState,
 }
 
 impl SettingsApp {
@@ -114,6 +150,7 @@ impl SettingsApp {
             network: NetworkState::default(),
             display: DisplayState::default(),
             ollama: OllamaState::default(),
+            ai: AiState::default(),
         };
         // Auto-refresh on start
         let tasks = Task::batch([
@@ -122,6 +159,7 @@ impl SettingsApp {
             Task::perform(async { do_ollama_refresh() }, |(running, models, available)| {
                 Message::OllamaRefreshDone { running, models, available }
             }),
+            Task::perform(async { load_ai_config() }, |(p, k, m, u)| Message::AiConfigLoaded(p, k, m, u)),
         ]);
         (state, tasks)
     }
@@ -281,6 +319,54 @@ impl SettingsApp {
                     self.ollama.progress = None;
                 }
             }
+
+            // -- AI Provider --
+            Message::AiLoadConfig => {
+                return Task::perform(async { load_ai_config() }, |(p, k, m, u)| {
+                    Message::AiConfigLoaded(p, k, m, u)
+                });
+            }
+            Message::AiConfigLoaded(provider, api_key, model, base_url) => {
+                self.ai.provider = provider;
+                self.ai.api_key = api_key;
+                self.ai.model = model;
+                self.ai.base_url = base_url;
+                self.ai.saved = false;
+            }
+            Message::AiSelectProvider(p) => {
+                self.ai.provider = p;
+                self.ai.saved = false;
+            }
+            Message::AiApiKeyChanged(v) => {
+                self.ai.api_key = v;
+                self.ai.saved = false;
+            }
+            Message::AiModelChanged(v) => {
+                self.ai.model = v;
+                self.ai.saved = false;
+            }
+            Message::AiBaseUrlChanged(v) => {
+                self.ai.base_url = v;
+                self.ai.saved = false;
+            }
+            Message::AiSave => {
+                let provider = self.ai.provider.clone();
+                let api_key = self.ai.api_key.clone();
+                let model = self.ai.model.clone();
+                let base_url = self.ai.base_url.clone();
+                return Task::perform(
+                    async move { save_ai_config(&provider, &api_key, &model, &base_url) },
+                    |(ok, msg)| Message::AiSaveDone(ok, msg),
+                );
+            }
+            Message::AiSaveDone(success, msg) => {
+                if success {
+                    self.ai.saved = true;
+                    self.ai.error = None;
+                } else {
+                    self.ai.error = Some(msg);
+                }
+            }
         }
         Task::none()
     }
@@ -311,6 +397,7 @@ impl SettingsApp {
             Tab::Network => network::view(&self.network),
             Tab::Display => display::view(&self.display),
             Tab::Ollama => ollama::view(&self.ollama),
+            Tab::Ai => ai::view(&self.ai),
         };
 
         let body = row![sidebar_view, tab_content];
@@ -469,8 +556,10 @@ fn fetch_available_models(installed: &[String]) -> Vec<String> {
     let parsed: Result<serde_json::Value, _> = serde_json::from_slice(&output);
     match parsed {
         Ok(json) => {
+            // API returns {"models": [...]} — unwrap the wrapper object
             let mut models: Vec<String> = json
-                .as_array()
+                .get("models")
+                .and_then(|v| v.as_array())
                 .into_iter()
                 .flatten()
                 .filter(|m| {
@@ -494,5 +583,92 @@ fn fetch_available_models(installed: &[String]) -> Vec<String> {
             .filter(|m| !installed.iter().any(|i| i.starts_with(m)))
             .map(|s| s.to_owned())
             .collect(),
+    }
+}
+
+/// Config path: ~/.config/aios/agent.toml
+fn ai_config_path() -> std::path::PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from(".config"))
+        .join("aios")
+        .join("agent.toml")
+}
+
+fn load_ai_config() -> (String, String, String, String) {
+    let path = ai_config_path();
+    if !path.exists() {
+        return ("ollama".to_owned(), String::new(), String::new(), "http://localhost:11434".to_owned());
+    }
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let config: serde_json::Value = toml::from_str(&content).unwrap_or_default();
+
+    let provider = config.get("provider")
+        .and_then(|p| p.get("type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("ollama")
+        .to_owned();
+    let api_key = config.get("provider")
+        .and_then(|p| p.get("api_key"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
+    let model = config.get("provider")
+        .and_then(|p| p.get("model"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
+    let base_url = config.get("provider")
+        .and_then(|p| p.get("base_url"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
+
+    (provider, api_key, model, base_url)
+}
+
+fn save_ai_config(provider: &str, api_key: &str, model: &str, base_url: &str) -> (bool, String) {
+    let path = ai_config_path();
+
+    // Read existing config to preserve agent section
+    let mut config: toml::Value = if path.exists() {
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        toml::from_str(&content).unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()))
+    } else {
+        toml::Value::Table(toml::map::Map::new())
+    };
+
+    // Update provider section
+    let table = config.as_table_mut().unwrap();
+    let mut prov = toml::map::Map::new();
+    prov.insert("type".to_owned(), toml::Value::String(provider.to_owned()));
+    prov.insert("api_key".to_owned(), toml::Value::String(api_key.to_owned()));
+    prov.insert("model".to_owned(), toml::Value::String(model.to_owned()));
+    if !base_url.is_empty() {
+        prov.insert("base_url".to_owned(), toml::Value::String(base_url.to_owned()));
+    }
+    table.insert("provider".to_owned(), toml::Value::Table(prov));
+
+    // Ensure agent section exists with defaults
+    if !table.contains_key("agent") {
+        let uid = std::env::var("UID")
+            .or_else(|_| std::env::var("EUID"))
+            .unwrap_or_else(|_| "1000".to_owned());
+        let mut agent = toml::map::Map::new();
+        agent.insert("socket_path".to_owned(), toml::Value::String(format!("/run/user/{uid}/aios-agent.sock")));
+        agent.insert("audit_log".to_owned(), toml::Value::String("/var/log/aios/actions.log".to_owned()));
+        agent.insert("max_destructive_per_minute".to_owned(), toml::Value::Integer(3));
+        table.insert("agent".to_owned(), toml::Value::Table(agent));
+    }
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    match toml::to_string_pretty(&config) {
+        Ok(content) => match std::fs::write(&path, &content) {
+            Ok(()) => (true, "Saved! Restart aios-agent to apply.".to_owned()),
+            Err(e) => (false, format!("Write error: {e}")),
+        },
+        Err(e) => (false, format!("Serialize error: {e}")),
     }
 }

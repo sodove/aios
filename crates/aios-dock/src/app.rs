@@ -172,12 +172,17 @@ fn position_dock_via_sway() {
         "Positioning dock via swaymsg: ({dock_x}, {dock_y}) width {dock_w}"
     );
 
-    // Use title matching — more reliable than app_id (Iced may use underscores).
-    let sel = r#"[title="AIOS Dock"]"#;
+    // Use PID matching — 100% reliable since we know our own PID.
+    let pid = std::process::id();
+    let sel = format!("[pid={pid}]");
 
-    // Ensure floating first (in case for_window rule didn't match by app_id).
+    // Force floating (for_window rules may not have matched).
     let _ = std::process::Command::new("swaymsg")
         .arg(format!("{sel} floating enable"))
+        .output();
+
+    let _ = std::process::Command::new("swaymsg")
+        .arg(format!("{sel} sticky enable"))
         .output();
 
     // Resize, then move to the computed position.

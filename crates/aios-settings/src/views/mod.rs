@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod sidebar;
 pub mod network;
 pub mod display;
