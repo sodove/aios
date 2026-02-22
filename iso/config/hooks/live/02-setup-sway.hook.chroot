@@ -21,6 +21,12 @@ exec_always export XCURSOR_SIZE=24
 # GPU-specific env vars are set by /etc/profile.d/gpu-env.sh at login
 # (auto-detects NVIDIA / AMD / Intel / software fallback)
 
+# Keyboard layouts: English + Russian, toggle with Alt+Shift
+input type:keyboard {
+    xkb_layout us,ru
+    xkb_options grp:alt_shift_toggle
+}
+
 # Appearance
 default_border pixel 2
 gaps inner 0
