@@ -28,7 +28,11 @@ pub fn view(state: &DockApp) -> Element<'_, Message> {
         .size(12)
         .color(DockColors::TEXT_MUTED);
 
-    let mut items = row![wifi, volume].spacing(12).align_y(iced::Alignment::Center);
+    let kbd = text(state.kbd_layout.as_str().to_owned())
+        .size(12)
+        .color(DockColors::TEXT);
+
+    let mut items = row![wifi, volume, kbd].spacing(12).align_y(iced::Alignment::Center);
 
     if let Some(bat) = state.battery_percent {
         let bat_color = if bat > 20 {

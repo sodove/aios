@@ -35,6 +35,8 @@ pub struct DockApp {
     pub(crate) battery_percent: Option<u8>,
     /// Volume percentage (hardcoded for MVP).
     pub(crate) volume_percent: u8,
+    /// Current keyboard layout, e.g. "EN" or "RU".
+    pub(crate) kbd_layout: String,
 }
 
 impl DockApp {
@@ -45,6 +47,7 @@ impl DockApp {
             wifi_connected: true,
             battery_percent: None,
             volume_percent: 50,
+            kbd_layout: current_kbd_layout(),
         };
 
         // On Wayland, clients cannot set their own window position.
@@ -64,6 +67,7 @@ impl DockApp {
         match message {
             Message::Tick => {
                 self.clock = current_time();
+                self.kbd_layout = current_kbd_layout();
                 // WiFi, battery, volume -- hardcoded until IPC to aios-agent is wired.
             }
             Message::LaunchApp(app) => match app {
@@ -88,6 +92,52 @@ impl DockApp {
 /// Returns the current local time formatted as `HH:MM`.
 fn current_time() -> String {
     chrono::Local::now().format("%H:%M").to_string()
+}
+
+/// Query sway for the active keyboard layout via `swaymsg -t get_inputs`.
+///
+/// Returns a short label like "EN" or "RU".
+fn current_kbd_layout() -> String {
+    let output = std::process::Command::new("swaymsg")
+        .args(["-t", "get_inputs", "-r"])
+        .output()
+        .ok();
+
+    if let Some(out) = output {
+        if let Ok(inputs) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout) {
+            // Find first keyboard input with xkb_active_layout_name
+            for input in &inputs {
+                if input.get("type").and_then(|v| v.as_str()) != Some("keyboard") {
+                    continue;
+                }
+                if let Some(layout) = input
+                    .get("xkb_active_layout_name")
+                    .and_then(|v| v.as_str())
+                {
+                    return layout_to_short(layout);
+                }
+            }
+        }
+    }
+
+    "EN".to_owned()
+}
+
+/// Convert a full layout name (e.g. "English (US)", "Russian") to a short label.
+fn layout_to_short(name: &str) -> String {
+    let lower = name.to_lowercase();
+    if lower.contains("russian") || lower.contains("ru") {
+        "RU".to_owned()
+    } else if lower.contains("english") || lower.contains("us") {
+        "EN".to_owned()
+    } else if lower.contains("german") || lower.contains("de") {
+        "DE".to_owned()
+    } else if lower.contains("french") || lower.contains("fr") {
+        "FR".to_owned()
+    } else {
+        // Take first 2 chars uppercase as fallback
+        name.chars().take(2).collect::<String>().to_uppercase()
+    }
 }
 
 /// Use swaymsg IPC to position the dock at the bottom of the focused output.
