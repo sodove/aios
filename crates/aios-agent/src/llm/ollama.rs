@@ -55,10 +55,9 @@ struct OllamaResponseMessage {
 
 impl OllamaProvider {
     pub fn new(config: &ProviderConfig) -> Result<Self> {
-        let base_url = if config.base_url.is_empty() {
-            "http://localhost:11434".to_owned()
-        } else {
-            config.base_url.trim_end_matches('/').to_owned()
+        let base_url = match &config.base_url {
+            Some(url) if !url.is_empty() => url.trim_end_matches('/').to_owned(),
+            _ => "http://localhost:11434".to_owned(),
         };
 
         let model = if config.model.is_empty() {
@@ -171,7 +170,7 @@ impl LlmProvider for OllamaProvider {
             content: MessageContent::Text {
                 text: chat_resp.message.content,
             },
-            trust_level: aios_common::TrustLevel::Trusted,
+            trust_level: aios_common::TrustLevel::System,
             timestamp: chrono::Utc::now(),
         };
 

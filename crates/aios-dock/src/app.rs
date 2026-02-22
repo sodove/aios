@@ -21,8 +21,6 @@ pub enum Message {
     Tick,
     /// User clicked an app icon to launch it.
     LaunchApp(AppId),
-    /// One-shot: position the dock at the bottom of the focused output via swaymsg.
-    PositionDock,
 }
 
 /// Root application state for the dock panel.
@@ -76,9 +74,6 @@ impl DockApp {
                 AppId::Terminal => launcher::launch_terminal(),
                 AppId::Settings => launcher::launch_settings(),
             },
-            Message::PositionDock => {
-                position_dock_via_sway();
-            }
         }
         Task::none()
     }
