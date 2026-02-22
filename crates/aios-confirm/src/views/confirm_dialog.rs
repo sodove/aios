@@ -19,6 +19,18 @@ pub fn view<'a>(
         .size(20)
         .color(ConfirmTheme::WARNING);
 
+    let close_btn = button(text("X").size(14).color(ConfirmTheme::TEXT_MUTED))
+        .on_press(Message::Reject)
+        .padding([4, 10])
+        .style(theme::cancel_button);
+
+    let top_row = row![
+        header,
+        Space::new().width(Fill),
+        close_btn,
+    ]
+    .align_y(iced::Alignment::Center);
+
     let type_row = row![
         text("Type: ").size(13).color(ConfirmTheme::TEXT_MUTED),
         text(action_type).size(13).color(ConfirmTheme::TEXT),
@@ -67,7 +79,7 @@ pub fn view<'a>(
     .width(Fill);
 
     let content = column![
-        header,
+        top_row,
         Space::new().height(12),
         type_row,
         Space::new().height(8),

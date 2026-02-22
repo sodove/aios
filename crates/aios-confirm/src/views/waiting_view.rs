@@ -1,5 +1,5 @@
-use iced::widget::{button, column, container, text, Space};
-use iced::{Element, Fill};
+use iced::widget::{button, column, container, row, text, Space};
+use iced::{Element, Fill, Length};
 
 use crate::app::Message;
 use crate::theme::{self, ConfirmTheme};
@@ -8,6 +8,17 @@ use crate::theme::{self, ConfirmTheme};
 ///
 /// Includes debug/simulate buttons for testing the UI without a live IPC connection.
 pub fn view() -> Element<'static, Message> {
+    // Close button in top-right
+    let close_btn = button(text("X").size(14).color(ConfirmTheme::TEXT_MUTED))
+        .on_press(Message::CloseWindow)
+        .padding([4, 10])
+        .style(theme::simulate_button);
+
+    let header = row![
+        Space::new().width(Length::Fill),
+        close_btn,
+    ];
+
     let title = text("AIOS Confirm")
         .size(24)
         .color(ConfirmTheme::TEXT);
@@ -31,7 +42,8 @@ pub fn view() -> Element<'static, Message> {
     .padding([8, 16]);
 
     let content = column![
-        Space::new().height(60),
+        header,
+        Space::new().height(40),
         title,
         Space::new().height(8),
         subtitle,
@@ -43,6 +55,7 @@ pub fn view() -> Element<'static, Message> {
     .align_x(iced::Center);
 
     container(content)
+        .padding(16)
         .center(Fill)
         .style(theme::dark_container)
         .into()

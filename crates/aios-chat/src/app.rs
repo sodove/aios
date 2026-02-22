@@ -94,6 +94,9 @@ pub enum Message {
     OobeComplete,
     /// Config file was saved (or failed) asynchronously.
     OobeConfigSaved(Result<(), String>),
+
+    /// User clicked the close (X) button.
+    CloseWindow,
 }
 
 impl AiosChat {
@@ -150,6 +153,10 @@ impl AiosChat {
                         Utc::now(),
                     ));
                 }
+            }
+
+            Message::CloseWindow => {
+                return iced::window::close(iced::window::Id::MAIN);
             }
 
             // -- OOBE wizard messages --

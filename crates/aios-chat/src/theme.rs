@@ -277,6 +277,34 @@ pub fn send_button(_theme: &iced::Theme, status: button::Status) -> button::Styl
     }
 }
 
+/// Close button style — transparent background, red hover highlight.
+pub fn close_button(_theme: &iced::Theme, status: button::Status) -> button::Style {
+    let base = button::Style {
+        background: Some(Background::Color(Color::TRANSPARENT)),
+        text_color: AiosColors::TEXT_SECONDARY,
+        border: Border {
+            radius: 4.0.into(),
+            ..Border::default()
+        },
+        ..button::Style::default()
+    };
+
+    match status {
+        button::Status::Active => base,
+        button::Status::Hovered => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.85, 0.30, 0.30, 0.3))),
+            text_color: Color::from_rgb(0.95, 0.40, 0.40),
+            ..base
+        },
+        button::Status::Pressed => button::Style {
+            background: Some(Background::Color(Color::from_rgba(0.85, 0.30, 0.30, 0.5))),
+            text_color: Color::WHITE,
+            ..base
+        },
+        button::Status::Disabled => base,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Scrollable style
 // ---------------------------------------------------------------------------

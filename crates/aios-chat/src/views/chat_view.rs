@@ -1,4 +1,4 @@
-use iced::widget::{column, container, row, scrollable, text, Space};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Element, Length};
 
 use crate::app::{AiosChat, Message};
@@ -33,8 +33,19 @@ fn header_row(status: ConnectionStatus) -> Element<'static, Message> {
 
     let status_label = text(status.label()).size(12).color(status_color);
 
-    let bar = row![title, Space::new().width(Length::Fill), status_label]
-        .align_y(iced::Alignment::Center);
+    let close_btn = button(text("X").size(14).color(AiosColors::TEXT_SECONDARY))
+        .on_press(Message::CloseWindow)
+        .padding([4, 10])
+        .style(theme::close_button);
+
+    let bar = row![
+        title,
+        Space::new().width(Length::Fill),
+        status_label,
+        close_btn
+    ]
+    .spacing(8)
+    .align_y(iced::Alignment::Center);
 
     container(bar)
         .width(Length::Fill)

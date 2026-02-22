@@ -50,6 +50,9 @@ pub enum Message {
     // -- Post-response (will be used when IPC is wired up) --
     #[allow(dead_code)]
     ResponseSent,
+
+    /// User clicked the close (X) button.
+    CloseWindow,
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +165,10 @@ impl AiosConfirm {
 
             Message::ResponseSent => {
                 self.state = ConfirmState::Waiting;
+            }
+
+            Message::CloseWindow => {
+                return iced::window::close(iced::window::Id::MAIN);
             }
         }
 
