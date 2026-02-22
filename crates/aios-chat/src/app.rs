@@ -43,6 +43,10 @@ pub struct OobeState {
     pub ollama_model: Option<String>,
     /// Status message during Ollama setup.
     pub ollama_status: Option<String>,
+    /// Whether a model pull is in progress.
+    pub pulling: bool,
+    /// Animated progress value (0.0 -- 100.0) for the indeterminate bar.
+    pub pull_progress: f32,
     /// Available models fetched from Ollama library.
     pub available_models: Vec<String>,
     /// Custom model name typed by user.
@@ -106,6 +110,8 @@ pub enum Message {
     OobeOllamaCustomModelChanged(String),
     /// User selected an Ollama model to pull.
     OobeOllamaSelectModel(String),
+    /// Ollama model pull progress update (0.0 -- 100.0).
+    OobeOllamaPullProgress(f32),
     /// Ollama model pull completed.
     OobeOllamaModelPulled(Result<(), String>),
     /// Navigate back to the previous OOBE step.
@@ -136,6 +142,8 @@ impl AiosChat {
                 api_key_input: String::new(),
                 ollama_model: None,
                 ollama_status: None,
+                pulling: false,
+                pull_progress: 0.0,
                 available_models: Vec::new(),
                 custom_model_input: String::new(),
             })
@@ -260,12 +268,18 @@ impl AiosChat {
             Message::OobeOllamaSelectModel(model) => {
                 if let Some(oobe) = &mut self.oobe_state {
                     oobe.ollama_model = Some(model.clone());
-                    oobe.ollama_status = Some(format!("Pulling {model}... This may take a few minutes."));
+                    oobe.ollama_status = Some(format!("Pulling {model}..."));
+                    oobe.pulling = true;
+                    oobe.pull_progress = 0.0;
                     return Task::perform(
                         async move {
-                            let output = std::process::Command::new("ollama")
-                                .args(["pull", &model])
-                                .output();
+                            let output = tokio::task::spawn_blocking(move || {
+                                std::process::Command::new("ollama")
+                                    .args(["pull", &model])
+                                    .output()
+                            })
+                            .await
+                            .unwrap_or_else(|e| Err(std::io::Error::new(std::io::ErrorKind::Other, e)));
                             match output {
                                 Ok(o) if o.status.success() => Ok(()),
                                 Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
@@ -276,8 +290,16 @@ impl AiosChat {
                     );
                 }
             }
+            Message::OobeOllamaPullProgress(_) => {
+                // Tick from subscription — animate the progress bar
+                if let Some(oobe) = &mut self.oobe_state {
+                    oobe.pull_progress = (oobe.pull_progress + 2.0) % 100.0;
+                }
+            }
             Message::OobeOllamaModelPulled(result) => {
                 if let Some(oobe) = &mut self.oobe_state {
+                    oobe.pulling = false;
+                    oobe.pull_progress = 0.0;
                     match result {
                         Ok(()) => {
                             oobe.ollama_status = Some("Model ready!".to_owned());
@@ -320,6 +342,10 @@ impl AiosChat {
                         if let Some(oobe) = &mut self.oobe_state {
                             oobe.step = OobeStep::Complete;
                         }
+                        // Restart aios-agent so it picks up the new config
+                        let _ = std::process::Command::new("systemctl")
+                            .args(["--user", "restart", "aios-agent"])
+                            .spawn();
                     }
                     Err(reason) => {
                         tracing::error!("Failed to save config: {reason}");
@@ -333,7 +359,21 @@ impl AiosChat {
 
     /// Declarative subscription: runs the IPC background worker when alive.
     pub fn subscription(&self) -> Subscription<Message> {
-        Subscription::run(ipc_client::ipc_worker).map(Message::Ipc)
+        let ipc = Subscription::run(ipc_client::ipc_worker).map(Message::Ipc);
+
+        // Animate progress bar while pulling a model
+        let is_pulling = self
+            .oobe_state
+            .as_ref()
+            .map_or(false, |o| o.pulling);
+
+        if is_pulling {
+            let tick = iced::time::every(std::time::Duration::from_millis(200))
+                .map(|_| Message::OobeOllamaPullProgress(0.0));
+            Subscription::batch([ipc, tick])
+        } else {
+            ipc
+        }
     }
 
     /// Build the view tree for the current state.
@@ -722,3 +762,4 @@ async fn fetch_ollama_models() -> Vec<String> {
 
     models
 }
+

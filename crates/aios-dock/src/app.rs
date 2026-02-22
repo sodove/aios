@@ -49,11 +49,18 @@ impl DockApp {
         };
 
         // On Wayland, clients cannot set their own window position.
-        // We spawn a background thread that waits for sway to create
-        // the window, then uses swaymsg IPC to move it to the bottom.
+        // We spawn a background thread that retries swaymsg IPC until
+        // the window is found and positioned at the bottom.
         std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(800));
-            position_dock_via_sway();
+            for attempt in 1..=5 {
+                std::thread::sleep(std::time::Duration::from_millis(600 * attempt));
+                if position_dock_via_sway() {
+                    tracing::info!("Dock positioned successfully on attempt {attempt}");
+                    return;
+                }
+                tracing::warn!("Dock positioning attempt {attempt} failed, retrying...");
+            }
+            tracing::error!("Failed to position dock after 5 attempts");
         });
 
         (state, Task::none())
@@ -137,60 +144,65 @@ fn layout_to_short(name: &str) -> String {
 
 /// Use swaymsg IPC to position the dock at the bottom of the focused output.
 ///
-/// Queries `swaymsg -t get_outputs` for the focused output dimensions,
-/// then moves and resizes the dock window accordingly.
-fn position_dock_via_sway() {
+/// Returns `true` if the move command succeeded.
+fn position_dock_via_sway() -> bool {
     let output = std::process::Command::new("swaymsg")
         .args(["-t", "get_outputs", "-r"])
         .output()
         .ok();
 
-    let (x, _y, w, h) = if let Some(out) = output {
-        serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout)
-            .ok()
-            .and_then(|outputs| {
-                let focused = outputs.iter().find(|o| {
-                    o.get("focused").and_then(|v| v.as_bool()).unwrap_or(false)
-                })?;
-                let rect = focused.get("rect")?;
-                let x = rect.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let y = rect.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let w = rect.get("width").and_then(|v| v.as_f64()).unwrap_or(1920.0);
-                let h = rect.get("height").and_then(|v| v.as_f64()).unwrap_or(1080.0);
-                Some((x, y, w, h))
-            })
-            .unwrap_or((0.0, 0.0, 1920.0, 1080.0))
-    } else {
-        (0.0, 0.0, 1920.0, 1080.0)
+    let Some(out) = output else {
+        tracing::warn!("swaymsg not available");
+        return false;
     };
+
+    let (x, _y, w, h) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout)
+        .ok()
+        .and_then(|outputs| {
+            let focused = outputs.iter().find(|o| {
+                o.get("focused").and_then(|v| v.as_bool()).unwrap_or(false)
+            })?;
+            let rect = focused.get("rect")?;
+            let x = rect.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let y = rect.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let w = rect.get("width").and_then(|v| v.as_f64()).unwrap_or(1920.0);
+            let h = rect.get("height").and_then(|v| v.as_f64()).unwrap_or(1080.0);
+            Some((x, y, w, h))
+        })
+        .unwrap_or((0.0, 0.0, 1920.0, 1080.0));
 
     let dock_x = x as i32;
     let dock_y = (_y + h - 48.0) as i32;
     let dock_w = w as i32;
 
-    tracing::info!(
-        "Positioning dock via swaymsg: ({dock_x}, {dock_y}) width {dock_w}"
-    );
-
     // Use PID matching — 100% reliable since we know our own PID.
     let pid = std::process::id();
     let sel = format!("[pid={pid}]");
 
+    tracing::info!("Positioning dock via swaymsg {sel}: ({dock_x}, {dock_y}) width {dock_w}");
+
     // Force floating (for_window rules may not have matched).
-    let _ = std::process::Command::new("swaymsg")
-        .arg(format!("{sel} floating enable"))
-        .output();
+    let cmds = [
+        format!("{sel} floating enable"),
+        format!("{sel} sticky enable"),
+        format!("{sel} resize set width {dock_w} height 48"),
+        format!("{sel} move absolute position {dock_x} {dock_y}"),
+    ];
 
-    let _ = std::process::Command::new("swaymsg")
-        .arg(format!("{sel} sticky enable"))
-        .output();
-
-    // Resize, then move to the computed position.
-    let _ = std::process::Command::new("swaymsg")
-        .arg(format!("{sel} resize set width {dock_w} height 48"))
-        .output();
-
-    let _ = std::process::Command::new("swaymsg")
-        .arg(format!("{sel} move absolute position {dock_x} {dock_y}"))
-        .output();
+    let mut ok = true;
+    for cmd in &cmds {
+        match std::process::Command::new("swaymsg").arg(cmd).output() {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let err = String::from_utf8_lossy(&o.stderr);
+                tracing::warn!("swaymsg `{cmd}` failed: {err}");
+                ok = false;
+            }
+            Err(e) => {
+                tracing::warn!("swaymsg `{cmd}` error: {e}");
+                ok = false;
+            }
+        }
+    }
+    ok
 }

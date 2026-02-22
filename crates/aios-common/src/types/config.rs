@@ -38,10 +38,10 @@ impl Default for AiosConfig {
     fn default() -> Self {
         Self {
             provider: ProviderConfig {
-                provider_type: ProviderType::Claude,
+                provider_type: ProviderType::Ollama,
                 api_key: String::new(),
-                model: "claude-sonnet-4-20250514".to_string(),
-                base_url: None,
+                model: "llama3.2".to_string(),
+                base_url: Some("http://localhost:11434".to_string()),
             },
             agent: AgentConfig {
                 socket_path: format!("/run/user/{}/aios-agent.sock", 1000),

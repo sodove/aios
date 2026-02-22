@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, container, progress_bar, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Length};
 
 use aios_common::ProviderType;
@@ -259,6 +259,14 @@ fn ollama_model_select_view(state: &OobeState) -> Element<'_, Message> {
             .size(13)
             .color(AiosColors::TEXT_SECONDARY);
         content = content.push(status);
+
+        if state.pulling {
+            content = content.push(Space::new().height(4));
+            content = content.push(
+                progress_bar(0.0..=100.0, state.pull_progress)
+                    .height(6),
+            );
+        }
         content = content.push(Space::new().height(8));
     }
 
@@ -277,10 +285,12 @@ fn ollama_model_select_view(state: &OobeState) -> Element<'_, Message> {
                 .width(Length::Fill)
                 .padding(14)
                 .style(theme::container_oobe_card);
-            let btn = button(inner)
-                .on_press(Message::OobeOllamaSelectModel(model.clone()))
+            let mut btn = button(inner)
                 .width(Length::Fill)
                 .style(theme::oobe_card_button);
+            if !state.pulling {
+                btn = btn.on_press(Message::OobeOllamaSelectModel(model.clone()));
+            }
             content = content.push(btn);
         }
 
