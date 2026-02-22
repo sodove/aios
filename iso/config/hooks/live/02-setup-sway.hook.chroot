@@ -56,17 +56,23 @@ bindsym Mod1+Tab focus next
 # Users can float individual windows with $mod+Space.
 
 # Remove borders for AIOS apps (they have their own chrome)
+# Match by both app_id and title for reliability (Iced may use underscores in app_id)
 for_window [app_id="aios-chat"] border none
+for_window [app_id="aios_chat"] border none
+for_window [title="AIOS Chat"] border none
 for_window [app_id="aios-settings"] border none
+for_window [app_id="aios_settings"] border none
+for_window [title="AIOS Settings"] border none
 
 # Dock: floating panel anchored at bottom via swaymsg IPC (see aios-dock app.rs)
-for_window [app_id="aios-dock"] {
-    floating enable
-    sticky enable
-}
+for_window [app_id="aios-dock"] { floating enable; sticky enable; }
+for_window [app_id="aios_dock"] { floating enable; sticky enable; }
+for_window [title="AIOS Dock"] { floating enable; sticky enable; }
 
 # Confirm dialog: small popup, should float
 for_window [app_id="aios-confirm"] floating enable
+for_window [app_id="aios_confirm"] floating enable
+for_window [title="AIOS Confirm"] floating enable
 
 # Autostart AIOS services
 exec systemctl --user start aios.target

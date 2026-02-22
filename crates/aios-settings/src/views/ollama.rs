@@ -66,25 +66,33 @@ pub fn view(state: &OllamaState) -> Element<'_, Message> {
         text("Pull Model").size(16).color(theme::SettingsColors::TEXT_PRIMARY),
     );
 
-    let popular = ["llama3.2", "llama3.1", "mistral", "qwen2.5", "gemma2", "phi4-mini", "deepseek-r1", "codellama"];
-    let mut pull_row = row![].spacing(6);
-    for model in popular {
-        let already_installed = state.models.iter().any(|m| m.starts_with(model));
-        let btn = button(text(model).size(12))
-            .padding([6, 12])
-            .style(if already_installed {
-                theme::sidebar_tab_active as fn(&iced::Theme, _) -> _
-            } else {
-                theme::action_button
-            });
+    if state.available_models.is_empty() {
+        content = content.push(
+            text("No models available. Press Refresh.")
+                .size(13)
+                .color(theme::SettingsColors::TEXT_SECONDARY),
+        );
+    } else {
+        let mut pull_grid = column![].spacing(6);
+        let mut current_row = row![].spacing(6);
+        for (i, model) in state.available_models.iter().enumerate() {
+            let btn = button(text(model.as_str()).size(12))
+                .padding([6, 12])
+                .style(theme::action_button)
+                .on_press(Message::OllamaPull(model.clone()));
 
-        pull_row = pull_row.push(if already_installed {
-            btn
-        } else {
-            btn.on_press(Message::OllamaPull(model.to_owned()))
-        });
+            current_row = current_row.push(btn);
+
+            if (i + 1) % 4 == 0 {
+                pull_grid = pull_grid.push(current_row);
+                current_row = row![].spacing(6);
+            }
+        }
+        if state.available_models.len() % 4 != 0 {
+            pull_grid = pull_grid.push(current_row);
+        }
+        content = content.push(pull_grid);
     }
-    content = content.push(pull_row);
 
     // Status/progress message
     if let Some(msg) = &state.progress {

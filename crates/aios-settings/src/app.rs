@@ -63,6 +63,8 @@ pub struct DisplayState {
 pub struct OllamaState {
     pub running: bool,
     pub models: Vec<String>,
+    /// Models available to pull (fetched from Ollama library API).
+    pub available_models: Vec<String>,
     pub progress: Option<String>,
     pub error: Option<String>,
 }
@@ -90,7 +92,7 @@ pub enum Message {
 
     // Ollama
     OllamaRefresh,
-    OllamaRefreshDone { running: bool, models: Vec<String> },
+    OllamaRefreshDone { running: bool, models: Vec<String>, available: Vec<String> },
     OllamaStart,
     OllamaStop,
     OllamaPull(String),
@@ -117,8 +119,8 @@ impl SettingsApp {
         let tasks = Task::batch([
             Task::perform(async { do_wifi_scan() }, |(nets, status)| Message::WifiScanDone(nets, status)),
             Task::perform(async { do_display_refresh() }, Message::DisplayRefreshDone),
-            Task::perform(async { do_ollama_refresh() }, |(running, models)| {
-                Message::OllamaRefreshDone { running, models }
+            Task::perform(async { do_ollama_refresh() }, |(running, models, available)| {
+                Message::OllamaRefreshDone { running, models, available }
             }),
         ]);
         (state, tasks)
@@ -221,9 +223,10 @@ impl SettingsApp {
                     Message::OllamaRefreshDone { running, models }
                 });
             }
-            Message::OllamaRefreshDone { running, models } => {
+            Message::OllamaRefreshDone { running, models, available } => {
                 self.ollama.running = running;
                 self.ollama.models = models;
+                self.ollama.available_models = available;
                 self.ollama.progress = None;
             }
             Message::OllamaStart => {
@@ -411,12 +414,12 @@ fn parse_sway_outputs(json_str: &str) -> Vec<DisplayOutput> {
         .collect()
 }
 
-fn do_ollama_refresh() -> (bool, Vec<String>) {
+fn do_ollama_refresh() -> (bool, Vec<String>, Vec<String>) {
     let status = commands::ollama_status();
     let running = status.success && status.output.trim() == "active";
 
     let models_result = commands::ollama_list_models();
-    let models = if models_result.success {
+    let models: Vec<String> = if models_result.success {
         models_result
             .output
             .lines()
@@ -434,5 +437,62 @@ fn do_ollama_refresh() -> (bool, Vec<String>) {
         Vec::new()
     };
 
-    (running, models)
+    // Fetch available models from Ollama library API (offline-only: size > 0)
+    let available = fetch_available_models(&models);
+
+    (running, models, available)
+}
+
+/// Fetch popular offline models from the Ollama library API.
+/// Falls back to a curated list if the API is unreachable.
+fn fetch_available_models(installed: &[String]) -> Vec<String> {
+    let fallback = vec![
+        "llama3.2", "llama3.1", "mistral", "qwen2.5",
+        "gemma2", "phi4-mini", "deepseek-r1", "codellama",
+    ];
+
+    let result = std::process::Command::new("curl")
+        .args(["-sf", "--connect-timeout", "5", "https://ollama.com/api/tags"])
+        .output();
+
+    let output = match result {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => {
+            return fallback
+                .into_iter()
+                .filter(|m| !installed.iter().any(|i| i.starts_with(m)))
+                .map(|s| s.to_owned())
+                .collect();
+        }
+    };
+
+    let parsed: Result<serde_json::Value, _> = serde_json::from_slice(&output);
+    match parsed {
+        Ok(json) => {
+            let mut models: Vec<String> = json
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|m| {
+                    m.get("size").and_then(|s| s.as_u64()).unwrap_or(0) > 0
+                })
+                .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(|s| s.to_owned()))
+                .filter(|name| !installed.iter().any(|i| i.starts_with(name.as_str())))
+                .take(20)
+                .collect();
+            if models.is_empty() {
+                models = fallback
+                    .into_iter()
+                    .filter(|m| !installed.iter().any(|i| i.starts_with(m)))
+                    .map(|s| s.to_owned())
+                    .collect();
+            }
+            models
+        }
+        Err(_) => fallback
+            .into_iter()
+            .filter(|m| !installed.iter().any(|i| i.starts_with(m)))
+            .map(|s| s.to_owned())
+            .collect(),
+    }
 }
